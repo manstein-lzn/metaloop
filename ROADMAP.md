@@ -1,6 +1,6 @@
 # MetaLoop Roadmap
 
-最后更新：2026-05-04
+最后更新：2026-05-06
 
 本文记录产品路线。当前实现主线是极简 v3：
 
@@ -116,7 +116,7 @@ v1 Capsule 范围：
 
 ## v3.2 Product CLI
 
-状态：v1 已实现，继续 polish。
+状态：v1 已实现，继续 polish；下一阶段产品形态要从 one-shot CLI 过渡到 long-running TUI shell。
 
 目标：让自用路径稳定、少参数、可恢复。
 
@@ -150,6 +150,84 @@ Goal-Style Resume v1:
 - resume 是 structured resume：读取 `.metaloop/` 文件判断是否 terminal success、缺少 ExecutionReport、failed/blocked verification、failed capsule closure 或 incomplete manifest。
 - terminal success 不重跑；需要继续时明确说明原因并重跑 goal runtime。
 - 后续 Codex 如提供 thread continuation API，再替换 adapter。
+
+## v3.2.5 Long-Running TUI Shell
+
+状态：计划中。
+
+目标：用户打开 `metaloop` 后长期停留在一个 TUI 会话中完成设计、运行、验收、修复、状态检查和后续迭代，而不是记住一组离散命令。
+
+核心判断：
+
+- 当前 `metaloop design` / `metaloop run` / `metaloop status` / `metaloop verify` 是正确的底层能力，但不是最终产品体验。
+- 最终自用形态应类似一个项目级控制台：启动一次，持续交互，随时知道当前 workspace 的 design/run/capsule/verification 状态。
+- CLI 子命令仍保留，作为脚本、调试和 CI 入口；TUI shell 是面向人的默认入口。
+
+目标入口：
+
+```bash
+metaloop
+```
+
+TUI shell 应提供：
+
+- 当前 workspace 总览：mission、capsule、run、verification、redesign、attempt history。
+- 用户自然语言输入区：用户可以说“开始设计”“继续上次任务”“这次结果我不满意”“帮我看现在卡在哪”。
+- 状态流：Codex、reviewer、verification、repair/redesign route 的当前动作必须持续可见。
+- 命令面板：保留显式 action，例如 design、run、verify、status、resume、revise、quit。
+- 任务队列/历史：展示最近 attempts、ExecutionReport、VerificationResult、RedesignProposal。
+- 中断恢复：TUI 重启后从 `.metaloop/` 结构化状态恢复。
+
+非目标：
+
+- 不把 TUI 做成隐藏所有结构的黑盒。
+- 不移除脚本友好的 CLI 子命令。
+- 不在 TUI 内引入递归 MetaLoop 编排。
+
+验收：
+
+- 用户在一个新 repo 中运行 `metaloop`，无需记忆命令即可被引导完成 design -> run -> verify。
+- 用户中途退出后重新运行 `metaloop`，能看到当前状态并继续。
+- 用户不满意结果时，TUI 能引导进入 feedback/revise/redesign 流程，而不是只显示 completed。
+
+## v3.2.6 User-Facing Agent
+
+状态：计划中。
+
+目标：增加一个专门面向用户的 agent，作为 MetaLoop 的交互层。它不直接替代 worker/reviewer，也不直接绕过结构化状态，而是负责理解用户意图、解释当前状态、建议下一步，并把用户自然语言转成明确的 MetaLoop action。
+
+角色命名暂定：
+
+```text
+UserAgent / ConciergeAgent / InterfaceAgent
+```
+
+职责：
+
+- 解释当前 workspace 状态：读取 `.metaloop/` artifacts，告诉用户现在处于 design、running、verified、blocked、redesign_required 还是 pending human acceptance。
+- 降低命令记忆成本：用户不需要记住 `metaloop design --resume` 或 `metaloop resume --mode goal`，UserAgent 根据状态选择 action。
+- 引导 Co-Design：用用户能读懂的方式推进需求压榨、方案展示、确认和锁定。
+- 引导 run 后反馈：当用户说“不满意”“继续优化”“结果不对”时，UserAgent 不直接让 worker 乱改，而是生成结构化 feedback/revision intent，进入 revise/redesign/repair 路径。
+- 做边界解释：说明哪些事情是 MetaLoop 验收，哪些是 Codex 执行，哪些需要用户最终确认。
+
+权限边界：
+
+- UserAgent 不能直接修改 locked MissionSpec、MissionCapsule、GoalContract。
+- UserAgent 不能把用户一句“继续”自动解释为扩大权限或弱化验收。
+- UserAgent 的输出必须落到结构化 action，例如 `start_design`、`resume_design`、`run_current_mission`、`verify_current_run`、`collect_feedback`、`propose_revision`、`show_status`。
+- Codex 不可用时直接报错；不得静默回落到假智能规则。
+
+建议数据结构：
+
+```text
+UserTurn -> UserIntent -> ProposedAction -> TUI Confirmation -> MetaLoop Command/Runtime Call
+```
+
+验收：
+
+- 用户可以用自然语言完成常见路径，而不需要知道具体子命令。
+- UserAgent 的每次建议都能解释“为什么现在建议这个 action”。
+- 所有 action 都能映射到现有结构化状态和 CLI/runtime API，不引入平行状态系统。
 
 ## v3.3 Co-Design v2 for Verification
 

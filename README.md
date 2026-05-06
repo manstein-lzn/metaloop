@@ -10,6 +10,8 @@ MissionSpec -> GoalContract -> Codex goal runtime -> ExecutionReport -> Verifica
 
 The constitutional architecture reference is [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md). It defines Mission Capsule as the durable governance object and sets the invariants for lifecycle, authority, evidence, acceptance, domain profiles, attempt memory, and repair/redesign/decomposition boundaries.
 
+Product direction: the current CLI subcommands are the stable foundation, but the intended human-facing experience is a long-running `metaloop` TUI shell with a dedicated user-facing agent. The user should be able to stay in one session, describe intent naturally, inspect state, run missions, verify results, and give post-run feedback without memorizing many commands. The shell and user-facing agent must still operate through the same structured `.metaloop/` artifacts and locked Mission Capsule boundaries.
+
 ## Project Docs
 
 - [STATE.md](STATE.md): current project state and handoff notes.
@@ -102,6 +104,8 @@ The structured runtime files are:
 Token and tool-call budgets are unlimited by default because the default product stance is task completion. Use `--max-tokens` or `--max-tool-calls` only when you intentionally want a hard cap for a specific design, run, or resume.
 
 The interactive CLI uses Rich panels, keyboard-selectable options, readline-backed free-text input, and a persistent run monitor for the human-facing product shell. During `metaloop run`, MetaLoop preserves concise progress lines for contract compilation, structured artifacts, Codex turns and commands, verification, reviewer routing, repair attempts, and final verification. JSON mode remains plain machine-readable JSON, and normal text output keeps stable lines such as `mission:`, `review:`, `next:`, and `status:` for scripts or quick scanning.
+
+Planned next UX step: `metaloop` without a subcommand should open a persistent TUI workspace console. A user-facing agent will translate natural-language requests such as "start a design", "continue the previous run", "show why this is blocked", or "I am not satisfied with the result" into explicit MetaLoop actions.
 
 Interrupted work can be resumed. `metaloop design --resume` restores the saved Co-Design draft for the workspace. `metaloop resume` restores the latest non-terminal run checkpoint from `.metaloop/runs.sqlite`, or use `metaloop resume <run_id>`. For the v3 structured runtime, use `metaloop resume --mode goal --workspace .`; it reads `.metaloop/run.json` and either reports the terminal VerificationResult or resumes the goal-style run from the structured MissionSpec.
 
