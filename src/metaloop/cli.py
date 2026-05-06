@@ -43,13 +43,36 @@ from metaloop.run_artifacts import StructuredRunManifest
 from metaloop.schemas import new_id
 from metaloop.soft_review import CodexSoftReviewer
 from metaloop.storage import SQLiteRunStore
+from metaloop.tui_shell import TuiShell
 from metaloop.ui import MetaLoopUI
+from metaloop.user_agent import CodexExecUserAgent, CodexSdkOptions, CodexSdkUserAgent, UserAgent
 from metaloop.workers import CodexExecWorkerBackend
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MetaLoop Kernel local runner.")
     subparsers = parser.add_subparsers(dest="command")
+
+    shell_parser = subparsers.add_parser("shell", help="Open the long-running MetaLoop workspace shell.")
+    shell_parser.add_argument("--workspace", default=".", help="Workspace root to inspect and operate on.")
+    shell_parser.add_argument(
+        "--user-agent",
+        choices=["sdk", "exec", "local"],
+        default="sdk",
+        help="User-facing shell agent. sdk is the default; exec is legacy one-shot codex exec; local is deterministic debugging.",
+    )
+    shell_parser.add_argument("--model", default=None, help="Codex model for --user-agent sdk or exec.")
+    shell_parser.add_argument("--codex-timeout", type=int, default=300, help="Codex UserAgent timeout in seconds.")
+    shell_parser.add_argument(
+        "--reset-user-agent-thread",
+        action="store_true",
+        help="Forget the persisted Codex SDK UserAgent thread for this workspace and exit.",
+    )
+    shell_parser.add_argument(
+        "--no-confirm",
+        action="store_true",
+        help="Run proposed shell actions without asking for confirmation.",
+    )
 
     design_parser = subparsers.add_parser("design", help="Run Co-Design and write a MissionSpec file.")
     design_parser.add_argument("--intent", default="", help="Initial task intent.")
@@ -241,6 +264,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     argv = _normalize_legacy_run(argv)
     args = build_parser().parse_args(argv)
+    if args.command == "shell":
+        return _shell(args)
     if args.command == "design":
         return _design(args)
     if args.command == "list":
@@ -262,11 +287,68 @@ def _normalize_legacy_run(argv: list[str] | None) -> list[str] | None:
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
-        return ["run"]
-    if argv[0] in {"design", "run", "compile", "verify", "status", "list", "show", "resume", "-h", "--help"}:
+        return ["shell"]
+    if argv[0] in {"shell", "design", "run", "compile", "verify", "status", "list", "show", "resume", "-h", "--help"}:
         return argv
     return ["run", *argv]
 
+
+def _shell(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace).expanduser().resolve()
+    if args.reset_user_agent_thread:
+        return _reset_user_agent_thread(workspace)
+    user_agent = _make_shell_user_agent(args, workspace)
+    shell = TuiShell(
+        workspace=workspace,
+        status_reader=_read_workspace_status,
+        command_runner=main,
+        user_agent=user_agent,
+        confirm_actions=not args.no_confirm,
+    )
+    return shell.run()
+
+
+def _reset_user_agent_thread(workspace: Path) -> int:
+    ui = MetaLoopUI()
+    path = workspace / ".metaloop" / "user_agent_thread.json"
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        ui.console.out(f"user_agent_thread: already_reset path={path}")
+        return 0
+    except OSError as exc:
+        ui.print_error(f"Failed to reset user agent thread: {exc}")
+        return 1
+    ui.console.out(f"user_agent_thread: reset path={path}")
+    return 0
+
+
+def _make_shell_user_agent(args: argparse.Namespace, workspace: Path):
+    if args.user_agent == "local":
+        return UserAgent()
+    if args.user_agent == "exec":
+        return CodexExecUserAgent(
+            CodexExecOptions(
+                model=args.model,
+                sandbox="read-only",
+                approval_policy="never",
+                timeout_seconds=args.codex_timeout,
+                working_directory=str(workspace),
+                skip_git_repo_check=True,
+                use_output_schema=False,
+            )
+        )
+    return CodexSdkUserAgent(
+        CodexSdkOptions(
+            model=args.model,
+            timeout_seconds=args.codex_timeout,
+            working_directory=str(workspace),
+            skip_git_repo_check=True,
+            sandbox_mode="read-only",
+            approval_policy="never",
+            thread_store_path=str(workspace / ".metaloop" / "user_agent_thread.json"),
+        )
+    )
 
 def _design(args: argparse.Namespace) -> int:
     ui = MetaLoopUI()

@@ -47,7 +47,7 @@ MetaLoop 应该把 Codex 视为“强执行型 Agent 后端”，而不是让 Co
 1. 通过 Python 子进程直接调用 `codex exec --json`。
 2. 写一个 Node bridge，用 TypeScript SDK 包一层 RPC/stdio 接口给 Python 调用。
 
-第一阶段建议采用方案 1。
+当前状态：runtime worker/goal 仍主要使用方案 1；human-facing shell UserAgent 已采用方案 2。`src/metaloop/codex_sdk_bridge.mjs` 通过 `@openai/codex-sdk` 创建持久 thread，Python shell 在同一进程会话内复用该 thread。
 
 ### 2.2 Python SDK
 
@@ -63,7 +63,7 @@ MetaLoop 应该把 Codex 视为“强执行型 Agent 后端”，而不是让 Co
 - 需要通过 context manager 管理生命周期
 - 更适合未来深入集成，不适合作为 MetaLoop 第一阶段依赖
 
-MetaLoop 当前是 Python 项目，但不应该立即绑定 experimental Python SDK。先用 `codex exec --json` 建立稳定适配层更稳；`--output-schema` 可以作为增强能力，但不能作为唯一执行路径。
+MetaLoop 当前是 Python 项目，不绑定 experimental Python SDK。需要持久对话能力的 UserAgent 走 TypeScript SDK + Node bridge；执行 runtime 仍保留 `codex exec --json` 适配层。
 
 ## 3. CLI / exec 能力
 

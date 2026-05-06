@@ -22,9 +22,9 @@
 然后基于当前状态继续，不要从头推演。
 
 当前最高优先级是：
-1. long-running TUI shell：运行 metaloop 后进入持续交互界面。
-2. UserAgent / InterfaceAgent：专门面向用户，把自然语言转换为结构化 MetaLoop action。
-3. RedesignProposal -> Capsule revision / revised MissionSpec 的用户确认闭环。
+1. RedesignProposal -> Capsule revision / revised MissionSpec 的用户确认闭环。
+2. long-running TUI shell v2：把第一版 prompt-loop shell 打磨成更完整的状态流/命令面板。
+3. Codex SDK UserAgent v2：打磨 action confirmation UX 和 thread 状态展示。
 ```
 
 ## 当前仓库状态
@@ -64,12 +64,12 @@ git status --short --branch
 
 ```bash
 .venv/bin/pytest -q
-# 211 passed
+# 228 passed
 ```
 
 环境注意：
 
-- 本机可用虚拟环境：`.venv/`
+- 当前 checkout 原本没有 `.venv/`；本 session 已用 `python3 -m venv .venv` 创建，并安装 `pytest==8.4.2`、`pydantic>=2.0`、`rich>=13.0`、`pluggy>=1.5,<2`，再执行 `pip install -e . --no-deps`。
 - 使用 `.venv/bin/python`，不要假设系统存在 `python`
 - package 入口：`metaloop = metaloop.cli:main`
 - Python 要求：`>=3.12`
@@ -150,6 +150,7 @@ metaloop run --mode rigorous
 
 ### Run / Verify / Resume / Status
 
+- `metaloop` / `metaloop shell`
 - `metaloop run`
 - `metaloop verify`
 - `metaloop status`
@@ -163,6 +164,20 @@ goal mode 行为：
 - MissionSpec 文件中的 `run_id` 被保留为稳定 contract/capsule id。
 - `.metaloop/run.json` 指向最新 runtime mission。
 - `metaloop verify` 如果发现 `.metaloop/run.json`，会优先验证最新 runtime mission，避免原始 mission id 和 ExecutionReport id mismatch。
+
+### Long-Running Shell / UserAgent v1
+
+- 默认空命令 `metaloop` 现在进入 `metaloop shell`，不再等价于 `metaloop run`。
+- `src/metaloop/tui_shell.py` 提供第一版 Rich prompt-loop shell：启动时读取 `.metaloop/` 状态，展示 workspace overview，循环接收自然语言或显式 action。
+- `src/metaloop/user_agent.py` 提供 Codex SDK-backed UserAgent v1：默认 shell 启动时通过 Node bridge 调用 `@openai/codex-sdk`，创建/保留 Codex thread，让 Codex 理解现存项目并输出 `ProposedAction`。
+- SDK thread id 持久化到 `.metaloop/user_agent_thread.json`；重启 `metaloop` 后会读取该文件并通过 `resumeThread(threadId)` 继续同一个 Codex agent 历史。
+- `metaloop shell --reset-user-agent-thread` 只删除 `.metaloop/user_agent_thread.json` 并退出；不会删除 MissionSpec、Capsule、run、verification 或 attempt history。
+- `src/metaloop/codex_sdk_bridge.mjs` 是 Python -> TypeScript SDK stdio bridge；根目录 `package.json` 声明 `@openai/codex-sdk`，已执行 `npm install` 生成 `package-lock.json`。
+- `CodexExecUserAgent` 保留为 `metaloop shell --user-agent exec` 兼容路径；`UserAgent` 本地规则映射仍保留，但只作为 `metaloop shell --user-agent local` 调试路径；默认路径不静默回落到规则假智能。
+- CodexSdkUserAgent 输出 action：`start_design`、`resume_design`、`run_current_mission`、`verify_current_run`、`show_status`、`resume_run`、`collect_feedback`、`propose_revision`、`apply_redesign`、`quit`。
+- Shell 执行动作时仍调用现有 `main(["design" / "run" / "verify" / "status" / "resume", "--workspace", ...])`，不创建平行状态系统。
+- 用户说“不满意/修改/重设计”等反馈时，第一版 shell 只收集和解释边界；不会直接修改 locked MissionSpec、MissionCapsule 或 GoalContract。
+- 当状态是 `redesign_required` 时，UserAgent 不会把“继续”映射成普通 worker rerun，而是提出 revision/redesign action。
 
 ### Runtime Review / Repair / Redesign
 
@@ -203,7 +218,20 @@ goal mode 行为：
 
 ## 当前最高优先级
 
-### 1. Long-Running TUI Shell
+### 1. Redesign / Revision 闭环
+
+当前已有 shell/UserAgent v1 会识别反馈和 redesign_required，但还不会真正 apply proposal。
+
+下一步应实现：
+
+- structured user feedback schema。
+- `metaloop revise` / `metaloop redesign` 或 shell 内等价 action。
+- 用户确认 RedesignProposal。
+- 生成 revised MissionSpec。
+- 生成 Capsule revision id/version。
+- 新 run 绑定 revised contract。
+
+### 2. Long-Running TUI Shell v2
 
 目标：
 
@@ -212,6 +240,8 @@ metaloop
 ```
 
 启动后进入持续 TUI 会话，而不是一个命令跑完就退出。
+
+v1 已实现 prompt-loop 最小闭环；v2 继续补齐更完整的状态流、命令面板、历史 attempts 视图和 revision flow。
 
 应提供：
 
@@ -228,7 +258,7 @@ metaloop
 - 中途退出后重新运行 `metaloop`，能看到当前状态并继续。
 - 用户说“不满意”时能进入 feedback/revise/redesign，而不是只显示 completed。
 
-### 2. UserAgent / InterfaceAgent
+### 3. Codex SDK UserAgent v2
 
 目标：新增一个专门面向用户的 agent。
 
@@ -254,6 +284,8 @@ propose_revision
 apply_redesign
 quit
 ```
+
+v1 已默认接入 Codex SDK agent，并持久化 SDK thread id 支持跨 shell resume，也提供 reset/forget thread 命令。v2 应打磨 action confirmation UX 和 thread 状态展示，并继续遵守 fail-fast；Codex SDK 不可用时直接报错，不允许静默回落为看似智能的规则答复。规则映射只作为显式 local/basic mode。
 
 数据流建议：
 
@@ -404,7 +436,7 @@ git push
 
 ## 推荐下一步开发切片
 
-第一阶段建议不要直接做复杂全屏 TUI。先做最小产品闭环：
+第一阶段最小产品闭环已完成：
 
 ```text
 metaloop
@@ -417,15 +449,16 @@ metaloop
   -> 回到 shell
 ```
 
-最小新增模块建议：
+已新增模块：
 
 ```text
 src/metaloop/user_agent.py
 src/metaloop/tui_shell.py
+src/metaloop/codex_sdk_bridge.mjs
 tests/test_user_agent.py
 tests/test_tui_shell.py
 ```
 
-第一版 UserAgent 可以只支持本地结构化 action schema，Codex agent 调用可以放在第二步。但如果默认使用 Codex agent，必须遵守 fail-fast，不可静默规则兜底。
+接下来建议在此基础上实现 RedesignProposal apply/revision，而不是继续扩 shell 外观。
 
-第一版 TUI 可以先用 Rich prompt loop，不必立即引入 Textual。目标是产品控制流成立，而不是先做复杂 UI 框架。
+第一版 TUI 是 Rich prompt loop，未引入 Textual。目标是产品控制流成立，而不是先做复杂 UI 框架。

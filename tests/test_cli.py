@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -32,6 +33,99 @@ def test_cli_run_persists_state(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert "status: completed" in output
     assert SQLiteRunStore(db_path).list_runs()
+
+
+def test_cli_empty_command_opens_shell(monkeypatch, tmp_path, capsys) -> None:
+    calls = {}
+
+    class CapturingShell:
+        def __init__(self, **kwargs) -> None:
+            calls.update(kwargs)
+
+        def run(self) -> int:
+            return 0
+
+    monkeypatch.setattr("metaloop.cli.TuiShell", CapturingShell)
+
+    exit_code = main([])
+
+    assert exit_code == 0
+    assert calls["workspace"] == Path(".").expanduser().resolve()
+    assert calls["confirm_actions"] is True
+    assert calls["user_agent"].__class__.__name__ == "CodexSdkUserAgent"
+
+
+def test_cli_shell_no_confirm_passes_confirmation_mode(monkeypatch, tmp_path, capsys) -> None:
+    calls = {}
+
+    class CapturingShell:
+        def __init__(self, **kwargs) -> None:
+            calls.update(kwargs)
+
+        def run(self) -> int:
+            return 0
+
+    monkeypatch.setattr("metaloop.cli.TuiShell", CapturingShell)
+
+    exit_code = main(["shell", "--workspace", str(tmp_path), "--no-confirm"])
+
+    assert exit_code == 0
+    assert calls["workspace"] == tmp_path.resolve()
+    assert calls["confirm_actions"] is False
+
+
+def test_cli_shell_can_use_local_user_agent(monkeypatch, tmp_path, capsys) -> None:
+    calls = {}
+
+    class CapturingShell:
+        def __init__(self, **kwargs) -> None:
+            calls.update(kwargs)
+
+        def run(self) -> int:
+            return 0
+
+    monkeypatch.setattr("metaloop.cli.TuiShell", CapturingShell)
+
+    exit_code = main(["shell", "--workspace", str(tmp_path), "--user-agent", "local"])
+
+    assert exit_code == 0
+    assert calls["user_agent"].__class__.__name__ == "UserAgent"
+
+
+def test_cli_shell_reset_user_agent_thread_deletes_only_thread_file(monkeypatch, tmp_path, capsys) -> None:
+    calls = {}
+    metaloop_dir = tmp_path / ".metaloop"
+    metaloop_dir.mkdir()
+    thread_path = metaloop_dir / "user_agent_thread.json"
+    mission_path = metaloop_dir / "mission.json"
+    thread_path.write_text('{"thread_id":"thread_old"}', encoding="utf-8")
+    mission_path.write_text('{"intent":"keep me"}', encoding="utf-8")
+
+    class CapturingShell:
+        def __init__(self, **kwargs) -> None:
+            calls.update(kwargs)
+
+        def run(self) -> int:
+            return 0
+
+    monkeypatch.setattr("metaloop.cli.TuiShell", CapturingShell)
+
+    exit_code = main(["shell", "--workspace", str(tmp_path), "--reset-user-agent-thread"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "user_agent_thread: reset" in output
+    assert not thread_path.exists()
+    assert mission_path.exists()
+    assert calls == {}
+
+
+def test_cli_shell_reset_user_agent_thread_is_idempotent(tmp_path, capsys) -> None:
+    exit_code = main(["shell", "--workspace", str(tmp_path), "--reset-user-agent-thread"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "user_agent_thread: already_reset" in output
 
 
 def test_cli_design_writes_mission_file(tmp_path, capsys) -> None:

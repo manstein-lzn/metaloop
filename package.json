@@ -1,0 +1,8 @@
+{
+  "name": "metaloop-codex-sdk-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@openai/codex-sdk": "latest"
+  }
+}

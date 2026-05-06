@@ -10,7 +10,7 @@ MissionSpec -> GoalContract -> Codex goal runtime -> ExecutionReport -> Verifica
 
 The constitutional architecture reference is [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md). It defines Mission Capsule as the durable governance object and sets the invariants for lifecycle, authority, evidence, acceptance, domain profiles, attempt memory, and repair/redesign/decomposition boundaries.
 
-Product direction: the current CLI subcommands are the stable foundation, but the intended human-facing experience is a long-running `metaloop` TUI shell with a dedicated user-facing agent. The user should be able to stay in one session, describe intent naturally, inspect state, run missions, verify results, and give post-run feedback without memorizing many commands. The shell and user-facing agent must still operate through the same structured `.metaloop/` artifacts and locked Mission Capsule boundaries.
+Product direction: the current CLI subcommands are the stable foundation, and the first human-facing long-running `metaloop` shell is now available. The user should be able to stay in one session, describe intent naturally, inspect state, run missions, verify results, and give post-run feedback without memorizing many commands. The shell and user-facing agent must still operate through the same structured `.metaloop/` artifacts and locked Mission Capsule boundaries.
 
 ## Project Docs
 
@@ -39,6 +39,7 @@ This repository is currently at the v0.1.0-alpha milestone:
 - SQLite event/checkpoint persistence and artifact validation.
 - Minimal v3 contracts: GoalContract, ExecutionReport, VerificationResult.
 - Mission compilation, goal-style Codex execution, structured `.metaloop/` run files, and independent verification.
+- First-pass long-running `metaloop` shell with a Codex SDK-backed UserAgent and controlled MetaLoop action mapping.
 
 ## Run Tests
 
@@ -61,6 +62,9 @@ Or install in editable mode:
 
 ```bash
 pip3 install -e .
+npm install
+metaloop
+metaloop shell
 metaloop design
 metaloop run
 metaloop compile
@@ -82,7 +86,7 @@ metaloop run --mission examples/repo-summary.mission.json --worker codex --sandb
 
 For autonomous Co-Design, use `--interviewer codex --autonomous` with a concrete seed `--intent`. MetaLoop runs interviewer/answer/reviewer rounds, requires MissionSpec reviewer approval before writing the mission, and normalizes content-like file tasks toward `file_contains` validation.
 
-For normal use inside a project directory, prefer `metaloop design` followed by `metaloop run`. Interactive design uses Codex as the default co-designer and presents numbered options with manual input fallback. The design command writes `metaloop.mission.json`; run auto-discovers it.
+For normal use inside a project directory, run `metaloop` to open the workspace shell, or use `metaloop design` followed by `metaloop run` as explicit subcommands. Interactive design uses Codex as the default co-designer and presents numbered options with manual input fallback. The design command writes `metaloop.mission.json`; run auto-discovers it.
 
 When a run uses the Codex backend, MetaLoop calls separate Codex role agents for `brainstormer`, `planner`, `worker`, and `strategy_reviewer`. The scheduler, policy engine, budget checks, validators, and checkpoints remain in MetaLoop as hard control code.
 
@@ -106,7 +110,17 @@ Token and tool-call budgets are unlimited by default because the default product
 
 The interactive CLI uses Rich panels, keyboard-selectable options, readline-backed free-text input, and a persistent run monitor for the human-facing product shell. During `metaloop run`, MetaLoop preserves concise progress lines for contract compilation, structured artifacts, Codex turns and commands, verification, reviewer routing, repair attempts, and final verification. JSON mode remains plain machine-readable JSON, and normal text output keeps stable lines such as `mission:`, `review:`, `next:`, and `status:` for scripts or quick scanning.
 
-Planned next UX step: `metaloop` without a subcommand should open a persistent TUI workspace console. A user-facing agent will translate natural-language requests such as "start a design", "continue the previous run", "show why this is blocked", or "I am not satisfied with the result" into explicit MetaLoop actions.
+`metaloop` without a subcommand opens a persistent workspace console. By default, the shell starts a Codex SDK-backed UserAgent through `@openai/codex-sdk`. MetaLoop keeps one SDK thread alive for the shell session and stores the thread id at `.metaloop/user_agent_thread.json`, so reopening `metaloop` can resume the same Codex agent conversation. The agent can inspect the current project, talk with the user, and translate requests such as "start a design", "continue the previous run", "show why this is blocked", or "I am not satisfied with the result" into explicit MetaLoop actions.
+
+The shell, not the UserAgent, executes actions. Proposed actions are mapped to built-in commands such as `design`, `run`, `status`, `verify`, and `resume`, with confirmation where appropriate. The UserAgent does not directly modify locked MissionSpec, MissionCapsule, or GoalContract; revision/redesign application remains an explicit follow-up flow. Use `metaloop shell --user-agent exec` for the legacy one-shot `codex exec` adapter, or `metaloop shell --user-agent local` only for deterministic debugging without Codex.
+
+To forget only the user-facing Codex conversation for the current workspace:
+
+```bash
+metaloop shell --reset-user-agent-thread
+```
+
+This removes `.metaloop/user_agent_thread.json` and leaves mission, capsule, run, verification, and attempt history artifacts intact.
 
 Interrupted work can be resumed. `metaloop design --resume` restores the saved Co-Design draft for the workspace. `metaloop resume` restores the latest non-terminal run checkpoint from `.metaloop/runs.sqlite`, or use `metaloop resume <run_id>`. For the v3 structured runtime, use `metaloop resume --mode goal --workspace .`; it reads `.metaloop/run.json` and either reports the terminal VerificationResult or resumes the goal-style run from the structured MissionSpec.
 
@@ -118,7 +132,7 @@ metaloop show <run_id>
 metaloop show <run_id> --events
 ```
 
-Legacy shorthand still works:
+Legacy shorthand for direct intent runs still works when an argument is present:
 
 ```bash
 metaloop "Create a dummy artifact"

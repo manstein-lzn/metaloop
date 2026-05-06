@@ -153,7 +153,7 @@ Goal-Style Resume v1:
 
 ## v3.2.5 Long-Running TUI Shell
 
-状态：计划中。
+状态：v1 prompt-loop 已实现，继续打磨。
 
 目标：用户打开 `metaloop` 后长期停留在一个 TUI 会话中完成设计、运行、验收、修复、状态检查和后续迭代，而不是记住一组离散命令。
 
@@ -168,6 +168,16 @@ Goal-Style Resume v1:
 ```bash
 metaloop
 ```
+
+已实现 v1：
+
+- `metaloop` 空命令进入 shell；保留 `metaloop shell` 显式入口。
+- 启动时读取现有 `.metaloop/` structured artifacts，不创建平行状态系统。
+- 默认启动 Codex SDK-backed UserAgent，通过 `@openai/codex-sdk` 保持 Codex thread，并把 thread id 持久化到 `.metaloop/user_agent_thread.json` 支持跨 shell resume，让 Codex 理解现存项目并输出受控 `ProposedAction`；`metaloop shell --reset-user-agent-thread` 可忘掉该对话历史；`codex exec` 只作为 `--user-agent exec` 兼容路径，本地规则 agent 只作为 `--user-agent local` 调试路径。
+- Rich overview 展示 design、mission、run、verification、redesign、attempt history 和 next action。
+- 支持自然语言或显式 action 输入，确认后调用现有 `design/run/status/verify/resume` CLI/runtime 路径。
+- 用户反馈“不满意/修改/重设计”会被归类为 feedback/revision，不直接修改 locked MissionSpec、MissionCapsule 或 GoalContract。
+- `redesign_required` 状态下，“继续”不会被映射为普通 worker rerun。
 
 TUI shell 应提供：
 
@@ -192,7 +202,7 @@ TUI shell 应提供：
 
 ## v3.2.6 User-Facing Agent
 
-状态：计划中。
+状态：v1 Codex SDK-backed action proposal 已实现，thread id 持久化、跨 shell resume、reset/forget thread 已实现。
 
 目标：增加一个专门面向用户的 agent，作为 MetaLoop 的交互层。它不直接替代 worker/reviewer，也不直接绕过结构化状态，而是负责理解用户意图、解释当前状态、建议下一步，并把用户自然语言转成明确的 MetaLoop action。
 
@@ -201,6 +211,14 @@ TUI shell 应提供：
 ```text
 UserAgent / ConciergeAgent / InterfaceAgent
 ```
+
+已实现 v1：
+
+- `src/metaloop/user_agent.py`
+- `CodexSdkUserAgent` 接收用户文本和 workspace status，通过 `src/metaloop/codex_sdk_bridge.mjs` 调用 `@openai/codex-sdk`。它复用/恢复 Codex thread，允许 Codex 读取当前项目的 README、manifest、Git 历史和关键文件后返回 `ProposedAction`。
+- 支持 `start_design`、`resume_design`、`run_current_mission`、`verify_current_run`、`show_status`、`resume_run`、`collect_feedback`、`propose_revision`、`apply_redesign`、`quit`。
+- shell 负责确认并执行底层 `design/run/status/verify/resume`；CodexSdkUserAgent 不直接执行 MetaLoop action。
+- 本地规则映射只作为显式 local/debug mode，不伪装为默认智能体验。
 
 职责：
 

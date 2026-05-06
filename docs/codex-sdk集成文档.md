@@ -79,7 +79,15 @@ codex exec --json --output-schema schema.json --cd <workspace> --sandbox workspa
 @openai/codex-sdk
 ```
 
-它包装 `@openai/codex` CLI，通过 stdin/stdout 交换 JSONL 事件。适合未来写 Node bridge，但不是当前 Python Kernel 的第一选择。
+它包装 `@openai/codex` CLI，通过 stdin/stdout 交换 JSONL 事件。当前 human-facing shell UserAgent 已使用 Node bridge 接入 TypeScript SDK：
+
+```text
+src/metaloop/codex_sdk_bridge.mjs
+  -> @openai/codex-sdk
+  -> Codex.startThread() / thread.run()
+```
+
+同一 `metaloop` shell 会话内复用 Codex thread，因此用户可以持续和同一个 Codex agent 对话。Python Kernel 不直接 import TS SDK；它通过 JSONL stdio 请求 bridge，并要求 Codex 返回 `ProposedAction` JSON。真正执行 action 的仍是 MetaLoop shell。
 
 ### 2.4 Python SDK
 
