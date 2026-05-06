@@ -15,6 +15,7 @@ Product direction: the current CLI subcommands are the stable foundation, but th
 ## Project Docs
 
 - [STATE.md](STATE.md): current project state and handoff notes.
+- [HANDOFF.md](HANDOFF.md): concise session handoff for continuing development.
 - [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): implementation roadmap.
 - [docs/archive/metaloop架构设计.md](docs/archive/metaloop架构设计.md): original architecture design notes.
 - [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md): constitutional architecture reference.
