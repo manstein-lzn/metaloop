@@ -1,0 +1,26 @@
+.venv/
+.metaloop/
+.codex
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Node / frontend extension dependencies and generated artifacts
+node_modules/
+extensions/torchscript-dag-viewer/out/
+extensions/torchscript-dag-viewer/*.vsix
+
+# Large local model artifacts
+examples/models/*.pt
+examples/models/*.pth
+examples/models/*.pt2
+
+# Local editor / OS noise
+.DS_Store
+.idea/
+.vscode/

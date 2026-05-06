@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metaloop"
+version = "0.1.0"
+description = "A local-first autonomous closed-loop agent kernel."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+graph = [
+    "langgraph>=0.2",
+]
+
+[project.scripts]
+metaloop = "metaloop.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
