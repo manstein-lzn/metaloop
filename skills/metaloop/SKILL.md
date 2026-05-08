@@ -50,7 +50,9 @@ Use `python3 "$KERNEL" ...` from the target project workspace. If the runtime ex
 python3 "$KERNEL" --workspace . status
 ```
 
-2. If there is no locked mission or the user's intent is underspecified, design first. A capsule cannot be locked from intent alone; include rationale, non-goals, acceptance, and either hard validators or explicit `--allow-manual-only`:
+2. Before execution, design the verification protocol. Classify the task domain, decide whether the bundled generic extension is enough, and if not, propose a task-specific ExtensionSpec plus VerificationSpec. Mark every validator with `mode` (`executable`, `manual`, or `unsupported`) and `severity` (`blocking` or `advisory`). Do not execute until the Mission Capsule, ExtensionSpec, and VerificationSpec are locked.
+
+A capsule cannot be locked from intent alone; include rationale, non-goals, acceptance, and either executable validators or explicit `--allow-manual-only`:
 
 ```bash
 python3 "$KERNEL" --workspace . design \
@@ -72,7 +74,9 @@ python3 "$KERNEL" --workspace . design \
   --json-metric-gate '{"path":"summary.json","metric":"held_out.peak1_delta","operator":">=","threshold":0}'
 ```
 
-The portable kernel currently supports the bundled `generic` extension with `file_exists`, `command`, `forbidden_path`, and `json_metric_gate`. A full `--verification-spec <path>` JSON object can also be locked into the capsule.
+The portable kernel supports the bundled `generic` extension with `file_exists`, `command`, `forbidden_path`, `json_metric_gate`, `json_field_exists`, `file_contains`, `artifact_hash`, `forbidden_claim`, `manual_acceptance`, and `resource_gate`. Full `--extension-spec <path>` and `--verification-spec <path>` JSON objects can also be locked into the capsule.
+
+Before designing a custom spec, inspect available extension examples under `extensions/`. The bundled generic example is `extensions/generic/examples/basic.json`.
 
 3. If a mission exists and is ready, execute through the bundled run wrapper when a command-based execution path is available. This writes `.metaloop/execution_report.json` so verification is judging an actual run, not a chat claim:
 
@@ -119,8 +123,10 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 - Mission Capsule is task truth; chat history is not operational state.
 - Codex execution reports are candidate evidence, not final truth.
 - Intent alone is not enough to lock a Mission Capsule.
-- VerificationSpec is locked with the Mission Capsule and carries an extension hash.
+- ExtensionSpec and VerificationSpec are locked with the Mission Capsule and carry hashes.
 - Verification requires a valid ExecutionReport.
+- Manual or unsupported blocking validators cannot become hard verified completion.
+- Replacing a locked capsule requires a revision reason and archives the previous capsule.
 - VerificationResult and user acceptance determine completion.
 - Hard validators failing means not complete.
 - Skill instructions do not provide non-bypassable guarantees.

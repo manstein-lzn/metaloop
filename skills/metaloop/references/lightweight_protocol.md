@@ -89,13 +89,40 @@ The minimum design gate is intentionally stricter than a plain prompt: intent al
 
 ## VerificationSpec
 
-VerificationSpec is the structured completion contract locked inside the Mission Capsule. The bundled kernel supports the `generic` extension first:
+ExtensionSpec describes the task/domain verification language. VerificationSpec describes this exact task's completion gates. Both are locked inside the Mission Capsule.
+
+The bundled kernel supports the `generic` extension first:
 
 - `file_exists`
 - `command`
 - `forbidden_path`
 - `json_metric_gate`
+- `json_field_exists`
+- `file_contains`
+- `artifact_hash`
+- `forbidden_claim`
+- `manual_acceptance`
+- `resource_gate`
 
-Agents may design a VerificationSpec during the design phase, but workers must not weaken it after execution. The kernel records an `extension_hash` over the locked spec and rejects tampered specs during verification.
+Agents may design an ExtensionSpec and VerificationSpec during the design phase, but workers must not weaken them after execution. The kernel records hashes over the locked extension/spec and rejects tampered specs during verification.
 
-Domain-specific extensions should grow beside this generic core instead of being hardcoded into MetaLoop Core. A future StateTune extension should add validators for summary metrics, promotion gates, forbidden claims/features, and resource gates.
+Each validator must classify its verification mode and severity:
+
+- `mode=executable`: kernel can run the check.
+- `mode=manual`: user/reviewer judgment is required.
+- `mode=unsupported`: the task needs the check, but this kernel has no executor yet.
+- `severity=blocking`: unresolved means not complete.
+- `severity=advisory`: record as warning, not hard proof.
+
+Domain-specific extensions should grow beside this generic core instead of being hardcoded into MetaLoop Core. For a new domain, the agent should first design a task-specific ExtensionSpec, risk checks, review questions, and VerificationSpec. Manual or unsupported blocking checks must not be reported as `completed_verified`.
+
+The extension package shape is:
+
+```text
+extensions/<domain>/
+  profile.json
+  verification_schema.json
+  examples/
+```
+
+The current skill includes `extensions/generic/` as the reference package.

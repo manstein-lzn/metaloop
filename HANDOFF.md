@@ -65,7 +65,7 @@ git status --short --branch
 
 ```bash
 .venv/bin/pytest -q
-# 233 passed
+# 239 passed
 ```
 
 环境注意：
@@ -183,10 +183,14 @@ goal mode 行为：
 ### Skill-First Protocol Layer
 
 - `docs/metaloop_lightweight_protocol_reframing.md` 是新的轻量协议层方向文档。
+- `docs/metaloop_dynamic_extension_protocol_upgrade.md` 是 dynamic ExtensionSpec / VerificationSpec 升级约束文档。
+- `docs/team_internal_preview_guide.md` 是团队内测使用说明和推广边界。
+- `docs/codex_install_metaloop_skill.md` 是给 Codex 使用的一键安装 prompt。
 - `skills/metaloop/SKILL.md` 是 repo 内 `$metaloop` skill 入口。
 - `skills/metaloop/agents/openai.yaml` 是 skill UI metadata。
 - `skills/metaloop/references/lightweight_protocol.md` 沉淀轻量协议和 skill 边界。
-- `skills/metaloop/scripts/metaloop_kernel.py` 是 skill 内置 lightweight kernel，避免目标环境必须先安装完整 MetaLoop package；当前支持 status/design/run/verify/mark，写入 capsule/execution_report/verification_result，并做最小 schema 校验、design gate、locked VerificationSpec、generic validators 和 extension hash 审计。
+- `skills/metaloop/extensions/generic/` 是可发现的 generic extension package 示例。
+- `skills/metaloop/scripts/metaloop_kernel.py` 是 skill 内置 lightweight kernel，避免目标环境必须先安装完整 MetaLoop package；当前支持 status/design/run/verify/mark，写入 capsule/execution_report/verification_result，并做 schema/hash 校验、design gate、locked ExtensionSpec/VerificationSpec、validator mode/severity、generic validators、revision archive 和 independent verification。
 - 核心原则：MetaLoop 可以 skill-first，但不能 prompt-only。Skill 负责入口和对齐；bundled kernel/代码负责检查和状态；hooks/sandbox/wrapper runtime 负责更强约束。
 
 ### Runtime Review / Repair / Redesign

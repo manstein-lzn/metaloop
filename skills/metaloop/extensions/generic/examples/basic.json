@@ -1,0 +1,33 @@
+{
+  "extension_spec": {
+    "schema": "metaloop.extension_spec",
+    "version": "1.0",
+    "domain": "generic",
+    "purpose": "Generic local task verification.",
+    "validator_types": [
+      {"type": "file_exists", "mode": "executable", "description": "A required file exists."},
+      {"type": "json_metric_gate", "mode": "executable", "description": "A JSON metric passes a threshold."},
+      {"type": "resource_gate", "mode": "manual", "description": "A sensitive resource needs confirmation."}
+    ],
+    "risk_checks": [
+      "Do not treat manual gates as hard verification."
+    ],
+    "review_questions": [
+      "Are there unsupported task-specific claims that need manual review?"
+    ],
+    "known_gaps": []
+  },
+  "verification_spec": {
+    "schema": "metaloop.verification_spec",
+    "version": "1.0",
+    "domain": "generic",
+    "extension": "generic",
+    "extension_version": "1.0",
+    "validators": [
+      {"type": "file_exists", "mode": "executable", "severity": "blocking", "path": "result.txt"},
+      {"type": "json_metric_gate", "mode": "executable", "severity": "blocking", "path": "summary.json", "metric": "score", "operator": ">=", "threshold": 0}
+    ],
+    "evidence_requirements": [],
+    "resource_gates": []
+  }
+}

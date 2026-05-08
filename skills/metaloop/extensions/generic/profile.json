@@ -1,0 +1,27 @@
+{
+  "schema": "metaloop.extension_profile",
+  "version": "1.0",
+  "domain": "generic",
+  "purpose": "Generic local task verification for files, commands, JSON artifacts, hashes, resource gates, and manual claim review.",
+  "validator_types": [
+    {"type": "artifact_hash", "mode": "executable", "description": "Check a file sha256 digest."},
+    {"type": "command", "mode": "executable", "description": "Run a workspace command and require success."},
+    {"type": "file_contains", "mode": "executable", "description": "Require or forbid text in a file."},
+    {"type": "file_exists", "mode": "executable", "description": "Require a file to exist."},
+    {"type": "forbidden_claim", "mode": "manual", "description": "Require human/reviewer judgment for prohibited claims."},
+    {"type": "forbidden_path", "mode": "executable", "description": "Require a path to be absent."},
+    {"type": "json_field_exists", "mode": "executable", "description": "Require a dotted JSON field to exist."},
+    {"type": "json_metric_gate", "mode": "executable", "description": "Compare a dotted JSON metric against a threshold."},
+    {"type": "manual_acceptance", "mode": "manual", "description": "Require final human acceptance."},
+    {"type": "resource_gate", "mode": "manual", "description": "Require confirmation before expensive or sensitive resources."}
+  ],
+  "risk_checks": [
+    "Does the VerificationSpec distinguish executable checks from manual or unsupported checks?",
+    "Does the spec prevent claiming completion from missing or partial evidence?",
+    "Are expensive or sensitive resource actions gated by explicit confirmation?"
+  ],
+  "review_questions": [
+    "Which task failure modes are not covered by executable validators?",
+    "Which claims require human review before final acceptance?"
+  ]
+}

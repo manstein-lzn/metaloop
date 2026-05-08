@@ -25,13 +25,18 @@ Product direction: the current CLI subcommands are the stable foundation, and th
 - [docs/codex-sdk集成文档.md](docs/codex-sdk集成文档.md): Codex integration engineering guide.
 - [docs/minimal_v3_codex_goal_architecture.md](docs/minimal_v3_codex_goal_architecture.md): minimal v3 Codex goal architecture.
 - [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md): 轻量协议层重定位，以及 Codex Skill 的纪律边界。
+- [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md): dynamic ExtensionSpec / VerificationSpec upgrade plan and acceptance criteria.
+- [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md): team internal preview guide and rollout positioning.
+- [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md): copy-paste Codex prompt for one-step skill installation.
 - [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md): Alpha release notes.
 
 ## Skill-First Direction
 
 MetaLoop is being reframed as a skill-first, not prompt-only, protocol layer for Codex. The `$metaloop` skill is the lightweight entry and alignment surface; bundled scripts, schemas, validators, `.metaloop/` artifacts, and optional hooks/sandbox/wrapper runtime remain responsible for checks, state, and stronger constraints.
 
-The in-repo skill package starts at [skills/metaloop/SKILL.md](skills/metaloop/SKILL.md), with UI metadata in [skills/metaloop/agents/openai.yaml](skills/metaloop/agents/openai.yaml). It is intended to be deployable as a standalone Codex Skill: the portable minimum kernel is bundled at [skills/metaloop/scripts/metaloop_kernel.py](skills/metaloop/scripts/metaloop_kernel.py), so a target environment does not need the full MetaLoop Python package installed just to use the skill protocol. The kernel includes a minimal design gate, locked VerificationSpec, generic validators, capsule/report schema checks, command-based run wrapper, extension hash audit, and independent verification.
+The in-repo skill package starts at [skills/metaloop/SKILL.md](skills/metaloop/SKILL.md), with UI metadata in [skills/metaloop/agents/openai.yaml](skills/metaloop/agents/openai.yaml). It is intended to be deployable as a standalone Codex Skill: the portable minimum kernel is bundled at [skills/metaloop/scripts/metaloop_kernel.py](skills/metaloop/scripts/metaloop_kernel.py), so a target environment does not need the full MetaLoop Python package installed just to use the skill protocol. The kernel includes a minimal design gate, locked ExtensionSpec and VerificationSpec, generic extension package, validator mode/severity, capsule/report/spec schema checks, command-based run wrapper, hash audit, revision archive, and independent verification.
+
+For team rollout, use the Codex install prompt in [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md). It asks Codex to copy the self-contained skill package into `${CODEX_HOME:-$HOME/.codex}/skills/metaloop` and run a smoke test.
 
 This repository is currently at the v0.1.0-alpha milestone:
 

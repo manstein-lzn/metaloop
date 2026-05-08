@@ -1,0 +1,17 @@
+{
+  "schema": "metaloop.extension_verification_schema",
+  "version": "1.0",
+  "domain": "generic",
+  "validator_fields": {
+    "file_exists": ["type", "mode", "severity", "path"],
+    "command": ["type", "mode", "severity", "command"],
+    "forbidden_path": ["type", "mode", "severity", "path"],
+    "json_metric_gate": ["type", "mode", "severity", "path", "metric", "operator", "threshold"],
+    "json_field_exists": ["type", "mode", "severity", "path", "field"],
+    "file_contains": ["type", "mode", "severity", "path", "contains", "not_contains"],
+    "artifact_hash": ["type", "mode", "severity", "path", "sha256"],
+    "forbidden_claim": ["type", "mode", "severity", "claim", "description"],
+    "manual_acceptance": ["type", "mode", "severity", "description"],
+    "resource_gate": ["type", "mode", "severity", "resource", "requires_user_confirmation", "reason"]
+  }
+}
