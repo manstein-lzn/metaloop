@@ -1,6 +1,6 @@
 # MetaLoop Handoff
 
-最后更新：2026-05-06
+最后更新：2026-05-08
 
 本文是给新 Codex/session 的接力文档。目标是让新会话能快速恢复 MetaLoop 项目的当前状态，不从头推演，不丢失架构判断。
 
@@ -25,6 +25,7 @@
 1. RedesignProposal -> Capsule revision / revised MissionSpec 的用户确认闭环。
 2. long-running TUI shell v2：把第一版 prompt-loop shell 打磨成更完整的状态流/命令面板。
 3. Codex SDK UserAgent v2：打磨 action confirmation UX 和 thread 状态展示。
+4. skill-first 重构：让 `$metaloop` skill 成为可一键部署的自包含 Codex Skill；强约束仍落在 bundled kernel/CLI/schema/validator/hook/sandbox/wrapper runtime。
 ```
 
 ## 当前仓库状态
@@ -47,10 +48,10 @@ origin git@github.com:manstein-lzn/metaloop.git
 main
 ```
 
-当前最新提交：
+本轮开始基线提交：
 
 ```bash
-28722e4 Document TUI shell and user-facing agent roadmap
+4d78660 Add SDK-backed MetaLoop shell agent
 ```
 
 上一次确认状态：
@@ -64,7 +65,7 @@ git status --short --branch
 
 ```bash
 .venv/bin/pytest -q
-# 228 passed
+# 232 passed
 ```
 
 环境注意：
@@ -178,6 +179,15 @@ goal mode 行为：
 - Shell 执行动作时仍调用现有 `main(["design" / "run" / "verify" / "status" / "resume", "--workspace", ...])`，不创建平行状态系统。
 - 用户说“不满意/修改/重设计”等反馈时，第一版 shell 只收集和解释边界；不会直接修改 locked MissionSpec、MissionCapsule 或 GoalContract。
 - 当状态是 `redesign_required` 时，UserAgent 不会把“继续”映射成普通 worker rerun，而是提出 revision/redesign action。
+
+### Skill-First Protocol Layer
+
+- `docs/metaloop_lightweight_protocol_reframing.md` 是新的轻量协议层方向文档。
+- `skills/metaloop/SKILL.md` 是 repo 内 `$metaloop` skill 入口。
+- `skills/metaloop/agents/openai.yaml` 是 skill UI metadata。
+- `skills/metaloop/references/lightweight_protocol.md` 沉淀轻量协议和 skill 边界。
+- `skills/metaloop/scripts/metaloop_kernel.py` 是 skill 内置 lightweight kernel，避免目标环境必须先安装完整 MetaLoop package。
+- 核心原则：MetaLoop 可以 skill-first，但不能 prompt-only。Skill 负责入口和对齐；bundled kernel/代码负责检查和状态；hooks/sandbox/wrapper runtime 负责更强约束。
 
 ### Runtime Review / Repair / Redesign
 

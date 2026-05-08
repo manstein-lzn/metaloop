@@ -1,0 +1,6 @@
+interface:
+  display_name: "MetaLoop"
+  short_description: "Design, verify, and resume Codex tasks"
+  default_prompt: "Use $metaloop to design a Mission Capsule, execute around it, and verify the result."
+policy:
+  allow_implicit_invocation: true

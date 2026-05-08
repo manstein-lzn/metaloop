@@ -24,7 +24,14 @@ Product direction: the current CLI subcommands are the stable foundation, and th
 - [docs/codex-sdk能力边界.md](docs/codex-sdk能力边界.md): Codex SDK research notes.
 - [docs/codex-sdk集成文档.md](docs/codex-sdk集成文档.md): Codex integration engineering guide.
 - [docs/minimal_v3_codex_goal_architecture.md](docs/minimal_v3_codex_goal_architecture.md): minimal v3 Codex goal architecture.
+- [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md): 轻量协议层重定位，以及 Codex Skill 的纪律边界。
 - [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md): Alpha release notes.
+
+## Skill-First Direction
+
+MetaLoop is being reframed as a skill-first, not prompt-only, protocol layer for Codex. The `$metaloop` skill is the lightweight entry and alignment surface; bundled scripts, schemas, validators, `.metaloop/` artifacts, and optional hooks/sandbox/wrapper runtime remain responsible for checks, state, and stronger constraints.
+
+The in-repo skill package starts at [skills/metaloop/SKILL.md](skills/metaloop/SKILL.md), with UI metadata in [skills/metaloop/agents/openai.yaml](skills/metaloop/agents/openai.yaml). It is intended to be deployable as a standalone Codex Skill: the portable minimum kernel is bundled at [skills/metaloop/scripts/metaloop_kernel.py](skills/metaloop/scripts/metaloop_kernel.py), so a target environment does not need the full MetaLoop Python package installed just to use the skill protocol.
 
 This repository is currently at the v0.1.0-alpha milestone:
 

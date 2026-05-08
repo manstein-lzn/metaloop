@@ -1,6 +1,6 @@
 # MetaLoop Roadmap
 
-最后更新：2026-05-06
+最后更新：2026-05-08
 
 本文记录产品路线。当前实现主线是极简 v3：
 
@@ -20,6 +20,31 @@ MetaLoop 的价值不是替 Codex 写代码，而是：
 - 更完整地记录证据。
 
 Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调试。MetaLoop 不微观管理 Codex 的工具选择。
+
+2026-05-08 之后的产品方向是 skill-first，但不是 prompt-only：`$metaloop` skill 负责入口、对齐、设计纪律和 action 建议；skill-bundled kernel、MetaLoop CLI、schemas、validators 和 `.metaloop/` artifacts 负责确定性检查和状态；hooks、sandbox 或 wrapper runtime 只在真实任务证明必要时提供更强不可绕过约束。
+
+## v2.9 Skill-First Lightweight Protocol
+
+状态：v1 self-contained skill package 已新增。
+
+目标：把 MetaLoop 的入口变轻，让 Codex 可以通过可一键部署的 `$metaloop` skill 进入深度 design、capsule、verify、repair/redesign/resume 纪律，同时不把强约束只放在 prompt 中。
+
+已实现：
+
+- `skills/metaloop/SKILL.md`
+- `skills/metaloop/agents/openai.yaml`
+- `skills/metaloop/references/lightweight_protocol.md`
+- `skills/metaloop/scripts/metaloop_kernel.py`
+- README 文档入口
+- skill package 边界测试
+
+验收：
+
+- Skill 明确声明自己是入口和对齐层，不是不可绕过的 runtime。
+- Skill 指向 CLI/schema/validators 作为检查和状态来源。
+- Skill 内置 lightweight kernel，目标环境不必先安装完整 MetaLoop package 才能使用核心协议。
+- Skill 不创建第二套状态系统。
+- Skill 不允许 worker 静默修改 locked contract。
 
 ## v3.0 Minimal Goal Governance
 
