@@ -82,3 +82,20 @@ scripts/metaloop_kernel.py
 ```
 
 The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. The full repository CLI can supersede it when available, but the skill must not depend on that external install for its core protocol behavior.
+
+The bundled kernel also writes `.metaloop/execution_report.json` when execution can be represented as one or more workspace commands. Verification should require this report before claiming completion, because a validator pass without a recorded execution can hide skipped or drifted work.
+
+The minimum design gate is intentionally stricter than a plain prompt: intent alone is insufficient. A locked capsule should include design rationale, at least one explicit non-goal, acceptance criteria, and a hard verification path unless the user explicitly accepts manual-only review.
+
+## VerificationSpec
+
+VerificationSpec is the structured completion contract locked inside the Mission Capsule. The bundled kernel supports the `generic` extension first:
+
+- `file_exists`
+- `command`
+- `forbidden_path`
+- `json_metric_gate`
+
+Agents may design a VerificationSpec during the design phase, but workers must not weaken it after execution. The kernel records an `extension_hash` over the locked spec and rejects tampered specs during verification.
+
+Domain-specific extensions should grow beside this generic core instead of being hardcoded into MetaLoop Core. A future StateTune extension should add validators for summary metrics, promotion gates, forbidden claims/features, and resource gates.

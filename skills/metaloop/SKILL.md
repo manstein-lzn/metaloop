@@ -50,7 +50,7 @@ Use `python3 "$KERNEL" ...` from the target project workspace. If the runtime ex
 python3 "$KERNEL" --workspace . status
 ```
 
-2. If there is no locked mission or the user's intent is underspecified, design first:
+2. If there is no locked mission or the user's intent is underspecified, design first. A capsule cannot be locked from intent alone; include rationale, non-goals, acceptance, and either hard validators or explicit `--allow-manual-only`:
 
 ```bash
 python3 "$KERNEL" --workspace . design \
@@ -62,7 +62,27 @@ python3 "$KERNEL" --workspace . design \
   --file-exists "<expected/file/path>"
 ```
 
-3. If a mission exists and is ready, execute with Codex around the locked capsule rather than bypassing the protocol. Keep implementation work aligned to `.metaloop/mission_capsule.json`.
+For metric-driven work, lock a structured VerificationSpec during design instead of leaving rules in chat:
+
+```bash
+python3 "$KERNEL" --workspace . design \
+  --intent "<clarified intent>" \
+  --rationale "<why this gate defines completion>" \
+  --non-goal "<what must not be claimed>" \
+  --json-metric-gate '{"path":"summary.json","metric":"held_out.peak1_delta","operator":">=","threshold":0}'
+```
+
+The portable kernel currently supports the bundled `generic` extension with `file_exists`, `command`, `forbidden_path`, and `json_metric_gate`. A full `--verification-spec <path>` JSON object can also be locked into the capsule.
+
+3. If a mission exists and is ready, execute through the bundled run wrapper when a command-based execution path is available. This writes `.metaloop/execution_report.json` so verification is judging an actual run, not a chat claim:
+
+```bash
+python3 "$KERNEL" --workspace . run \
+  --command "<command that performs the work>" \
+  --evidence "<evidence note>"
+```
+
+When Codex itself performs the implementation, keep work aligned to `.metaloop/mission_capsule.json`, then produce an ExecutionReport through the full MetaLoop CLI when available or a command-based wrapper step when possible.
 
 4. Judge completion through verification, not worker self-report:
 
@@ -98,6 +118,9 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 
 - Mission Capsule is task truth; chat history is not operational state.
 - Codex execution reports are candidate evidence, not final truth.
+- Intent alone is not enough to lock a Mission Capsule.
+- VerificationSpec is locked with the Mission Capsule and carries an extension hash.
+- Verification requires a valid ExecutionReport.
 - VerificationResult and user acceptance determine completion.
 - Hard validators failing means not complete.
 - Skill instructions do not provide non-bypassable guarantees.

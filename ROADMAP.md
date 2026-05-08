@@ -25,7 +25,7 @@ Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调
 
 ## v2.9 Skill-First Lightweight Protocol
 
-状态：v1 self-contained skill package 已新增。
+状态：v1.2 self-contained skill package 已新增。
 
 目标：把 MetaLoop 的入口变轻，让 Codex 可以通过可一键部署的 `$metaloop` skill 进入深度 design、capsule、verify、repair/redesign/resume 纪律，同时不把强约束只放在 prompt 中。
 
@@ -37,6 +37,12 @@ Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调
 - `skills/metaloop/scripts/metaloop_kernel.py`
 - README 文档入口
 - skill package 边界测试
+- design gate：intent-only 不能 lock；必须有 rationale、non-goal、acceptance 和硬验证路径，除非显式 manual-only
+- minimal run wrapper：命令式执行写入 `.metaloop/execution_report.json`
+- schema checks：verify 读取 capsule/report 时做结构校验，缺 report 不能完成
+- locked VerificationSpec：Mission Capsule 内锁定 structured completion contract
+- generic extension：支持 `file_exists`、`command`、`forbidden_path`、`json_metric_gate`
+- extension hash audit：验证阶段检测 VerificationSpec 执行后篡改
 
 验收：
 
