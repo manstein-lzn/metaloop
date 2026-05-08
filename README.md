@@ -1,68 +1,80 @@
 # MetaLoop
 
-MetaLoop is a local-first mission governance layer for Codex-driven work.
+MetaLoop 是一个本地优先的任务治理层，用来约束和稳定 Codex 驱动的复杂工作。
 
-Current v3 direction:
+当前 v3 主线：
 
 ```text
 MissionSpec -> GoalContract -> Codex goal runtime -> ExecutionReport -> VerificationResult
 ```
 
-The constitutional architecture reference is [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md). It defines Mission Capsule as the durable governance object and sets the invariants for lifecycle, authority, evidence, acceptance, domain profiles, attempt memory, and repair/redesign/decomposition boundaries.
+宪法级架构参考见 [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md)。它把 Mission Capsule 定义为持久治理对象，并明确生命周期、权限、证据、验收、领域 profile、尝试记忆，以及 repair / redesign / decomposition 的边界。
 
-Product direction: the current CLI subcommands are the stable foundation, and the first human-facing long-running `metaloop` shell is now available. The user should be able to stay in one session, describe intent naturally, inspect state, run missions, verify results, and give post-run feedback without memorizing many commands. The shell and user-facing agent must still operate through the same structured `.metaloop/` artifacts and locked Mission Capsule boundaries.
+产品方向：现有 CLI 子命令是稳定基础，第一版面向人的长期运行 `metaloop` shell 已经可用。用户应该能留在一个会话里，用自然语言描述意图、查看状态、运行任务、验证结果、提交运行后反馈，而不是记忆大量命令。shell 和 user-facing agent 仍然必须通过同一套结构化 `.metaloop/` artifacts 和 locked Mission Capsule 边界工作。
 
-## Project Docs
+## 项目文档
 
-- [STATE.md](STATE.md): current project state and handoff notes.
-- [HANDOFF.md](HANDOFF.md): concise session handoff for continuing development.
-- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md): implementation roadmap.
-- [docs/archive/metaloop架构设计.md](docs/archive/metaloop架构设计.md): original architecture design notes.
-- [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md): constitutional architecture reference.
-- [docs/ALPHA_USER_GUIDE.md](docs/ALPHA_USER_GUIDE.md): technical user guide.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): common runtime issues.
-- [docs/codex-sdk能力边界.md](docs/codex-sdk能力边界.md): Codex SDK research notes.
-- [docs/codex-sdk集成文档.md](docs/codex-sdk集成文档.md): Codex integration engineering guide.
-- [docs/minimal_v3_codex_goal_architecture.md](docs/minimal_v3_codex_goal_architecture.md): minimal v3 Codex goal architecture.
-- [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md): 轻量协议层重定位，以及 Codex Skill 的纪律边界。
-- [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md): dynamic ExtensionSpec / VerificationSpec upgrade plan and acceptance criteria.
-- [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md): team internal preview guide and rollout positioning.
-- [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md): copy-paste Codex prompt for one-step skill installation.
-- [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md): Alpha release notes.
+- [STATE.md](STATE.md)：当前项目状态和交接备注。
+- [HANDOFF.md](HANDOFF.md)：给后续 session 继续开发用的简明交接文档。
+- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)：实现路线图。
+- [docs/archive/metaloop架构设计.md](docs/archive/metaloop架构设计.md)：早期架构设计笔记。
+- [docs/mission_capsule_constitution.md](docs/mission_capsule_constitution.md)：宪法级架构参考。
+- [docs/ALPHA_USER_GUIDE.md](docs/ALPHA_USER_GUIDE.md)：技术用户指南。
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)：常见运行问题。
+- [docs/codex-sdk能力边界.md](docs/codex-sdk能力边界.md)：Codex SDK 能力边界研究。
+- [docs/codex-sdk集成文档.md](docs/codex-sdk集成文档.md)：Codex 集成工程文档。
+- [docs/minimal_v3_codex_goal_architecture.md](docs/minimal_v3_codex_goal_architecture.md)：极简 v3 Codex goal 架构。
+- [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md)：轻量协议层重定位，以及 Codex Skill 的纪律边界。
+- [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：dynamic ExtensionSpec / VerificationSpec 升级方案和验收标准。
+- [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md)：团队内测指南和推广边界。
+- [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md)：可直接复制给 Codex 的一键 skill 安装 prompt。
+- [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md)：Alpha 发布说明。
 
-## Skill-First Direction
+## Skill-First 方向
 
-MetaLoop is being reframed as a skill-first, not prompt-only, protocol layer for Codex. The `$metaloop` skill is the lightweight entry and alignment surface; bundled scripts, schemas, validators, `.metaloop/` artifacts, and optional hooks/sandbox/wrapper runtime remain responsible for checks, state, and stronger constraints.
+MetaLoop 正在被重定位为 Codex 的 skill-first、not prompt-only 协议层。`$metaloop` skill 是轻量入口和对齐界面；真正负责检查、状态和更强约束的是 bundled scripts、schemas、validators、`.metaloop/` artifacts，以及可选的 hooks / sandbox / wrapper runtime。
 
-The in-repo skill package starts at [skills/metaloop/SKILL.md](skills/metaloop/SKILL.md), with UI metadata in [skills/metaloop/agents/openai.yaml](skills/metaloop/agents/openai.yaml). It is intended to be deployable as a standalone Codex Skill: the portable minimum kernel is bundled at [skills/metaloop/scripts/metaloop_kernel.py](skills/metaloop/scripts/metaloop_kernel.py), so a target environment does not need the full MetaLoop Python package installed just to use the skill protocol. The kernel includes a minimal design gate, locked ExtensionSpec and VerificationSpec, generic extension package, validator mode/severity, capsule/report/spec schema checks, command-based run wrapper, hash audit, revision archive, and independent verification.
+仓库内的 skill package 入口是 [skills/metaloop/SKILL.md](skills/metaloop/SKILL.md)，UI metadata 在 [skills/metaloop/agents/openai.yaml](skills/metaloop/agents/openai.yaml)。它被设计为可独立部署的 Codex Skill：最小可移植内核位于 [skills/metaloop/scripts/metaloop_kernel.py](skills/metaloop/scripts/metaloop_kernel.py)，所以目标环境不需要先安装完整 MetaLoop Python package 才能使用 skill 协议。
 
-For team rollout, use the Codex install prompt in [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md). It asks Codex to copy the self-contained skill package into `${CODEX_HOME:-$HOME/.codex}/skills/metaloop` and run a smoke test.
+当前 bundled kernel 包含：
 
-This repository is currently at the v0.1.0-alpha milestone:
+- 最小 design gate。
+- locked ExtensionSpec 和 VerificationSpec。
+- generic extension package。
+- validator `mode` / `severity`。
+- capsule / report / spec schema 检查。
+- command-based run wrapper。
+- hash audit。
+- revision archive。
+- independent verification。
 
-- Pydantic contracts for the core runtime state.
-- A deterministic flat dummy runner.
-- Multi-round Co-Design command that generates reviewed MissionSpec files, including explicit autonomous Codex Co-Design.
-- MissionSpec JSON/YAML input.
-- Codex-backed runtime role agents for brainstormer, planner, worker, and strategy reviewer.
-- Codex worker backend with `--output-schema` fallback and `--no-output-schema` mode.
-- Product-grade Rich CLI shell for Co-Design, mission selection, run summaries, reviewer findings, and stable script-friendly semantic lines.
-- Structured terminal states: `completed`, `failed`, `blocked`, `proposed_next_task`.
-- SQLite event/checkpoint persistence and artifact validation.
-- Minimal v3 contracts: GoalContract, ExecutionReport, VerificationResult.
-- Mission compilation, goal-style Codex execution, structured `.metaloop/` run files, and independent verification.
-- First-pass long-running `metaloop` shell with a Codex SDK-backed UserAgent and controlled MetaLoop action mapping.
+团队推广建议使用 [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md) 里的 Codex 安装 prompt。它会让 Codex 把自包含 skill package 复制到 `${CODEX_HOME:-$HOME/.codex}/skills/metaloop`，并运行 smoke test。
 
-## Run Tests
+当前仓库处于 `v0.1.0-alpha` 里程碑，已经具备：
+
+- 核心 runtime state 的 Pydantic contracts。
+- 确定性的 flat dummy runner。
+- 多轮 Co-Design 命令，可生成经过 review 的 MissionSpec 文件，包括显式 autonomous Codex Co-Design。
+- MissionSpec JSON / YAML 输入。
+- Codex-backed runtime role agents：brainstormer、planner、worker、strategy reviewer。
+- Codex worker backend，支持 `--output-schema` fallback 和 `--no-output-schema` 模式。
+- 产品级 Rich CLI shell，用于 Co-Design、mission selection、run summaries、reviewer findings，以及稳定的脚本友好语义行。
+- 结构化终态：`completed`、`failed`、`blocked`、`proposed_next_task`。
+- SQLite event / checkpoint 持久化和 artifact validation。
+- 极简 v3 contracts：GoalContract、ExecutionReport、VerificationResult。
+- Mission compilation、goal-style Codex execution、结构化 `.metaloop/` run files，以及 independent verification。
+- 第一版长期运行 `metaloop` shell，使用 Codex SDK-backed UserAgent 和受控 MetaLoop action mapping。
+
+## 运行测试
 
 ```bash
 source .venv/bin/activate
 pytest -q
 ```
 
-## Run The Dummy Kernel
+## 运行 Dummy Kernel
 
-Without installing the package:
+不安装 package 时：
 
 ```bash
 PYTHONPATH=src python3 -m metaloop run "Create a dummy artifact"
@@ -70,7 +82,7 @@ PYTHONPATH=src python3 -m metaloop run "Create a dummy artifact with retry"
 PYTHONPATH=src python3 -m metaloop run "Please split this into a next task proposal" --json
 ```
 
-Or install in editable mode:
+或者以 editable mode 安装：
 
 ```bash
 pip3 install -e .
@@ -94,19 +106,25 @@ metaloop run "Summarize this repository" --worker codex --sandbox read-only --ap
 metaloop run --mission examples/repo-summary.mission.json --worker codex --sandbox read-only --approval never --no-output-schema
 ```
 
-`--no-output-schema` skips Codex CLI `--output-schema` and relies on prompt JSON plus MetaLoop validation. This is useful when a provider supports ordinary `codex exec --json` but fails on the structured-output/Responses path.
+`--no-output-schema` 会跳过 Codex CLI 的 `--output-schema`，改为依赖 prompt JSON 和 MetaLoop validation。当 provider 支持普通 `codex exec --json`，但 structured-output / Responses 路径失败时，这个模式很有用。
 
-For autonomous Co-Design, use `--interviewer codex --autonomous` with a concrete seed `--intent`. MetaLoop runs interviewer/answer/reviewer rounds, requires MissionSpec reviewer approval before writing the mission, and normalizes content-like file tasks toward `file_contains` validation.
+Autonomous Co-Design 使用 `--interviewer codex --autonomous`，并提供具体的 seed `--intent`。MetaLoop 会运行 interviewer / answer / reviewer 多轮流程，要求 MissionSpec reviewer approval 后才写入 mission，并把内容型文件任务规范化到 `file_contains` validation。
 
-For normal use inside a project directory, run `metaloop` to open the workspace shell, or use `metaloop design` followed by `metaloop run` as explicit subcommands. Interactive design uses Codex as the default co-designer and presents numbered options with manual input fallback. The design command writes `metaloop.mission.json`; run auto-discovers it.
+在普通项目目录中使用时，运行 `metaloop` 会打开 workspace shell；也可以显式使用 `metaloop design` 后接 `metaloop run`。交互式 design 默认使用 Codex 作为 co-designer，并提供编号选项和手动输入 fallback。design 命令会写入 `metaloop.mission.json`，run 会自动发现它。
 
-When a run uses the Codex backend, MetaLoop calls separate Codex role agents for `brainstormer`, `planner`, `worker`, and `strategy_reviewer`. The scheduler, policy engine, budget checks, validators, and checkpoints remain in MetaLoop as hard control code.
+当 run 使用 Codex backend 时，MetaLoop 会分别调用 Codex role agents：`brainstormer`、`planner`、`worker`、`strategy_reviewer`。scheduler、policy engine、budget checks、validators 和 checkpoints 仍然留在 MetaLoop 中作为硬控制代码。
 
-That role pipeline is no longer the default for mission files. In `auto` mode, `metaloop run` compiles the MissionSpec into a GoalContract, sends one goal-style prompt to ordinary `codex exec`, requires Codex to write `.metaloop/execution_report.json`, then MetaLoop independently writes `.metaloop/verification_result.json`.
+这条 role pipeline 已不再是 mission 文件的默认路径。在 `auto` 模式下，`metaloop run` 会把 MissionSpec 编译成 GoalContract，发送一个 goal-style prompt 给普通 `codex exec`，要求 Codex 写入 `.metaloop/execution_report.json`，然后由 MetaLoop 独立写入 `.metaloop/verification_result.json`。
 
-Use `metaloop run --mode rigorous` or an explicit `--worker` when you want the classic brainstormer/planner/worker/reviewer Kernel path.
+如果需要经典 brainstormer / planner / worker / reviewer Kernel 路径，使用：
 
-The structured runtime files are:
+```bash
+metaloop run --mode rigorous
+```
+
+或显式指定 `--worker`。
+
+结构化 runtime 文件包括：
 
 ```text
 .metaloop/mission.json
@@ -118,25 +136,25 @@ The structured runtime files are:
 .metaloop/runs/<run_id>/codex_events.jsonl
 ```
 
-Token and tool-call budgets are unlimited by default because the default product stance is task completion. Use `--max-tokens` or `--max-tool-calls` only when you intentionally want a hard cap for a specific design, run, or resume.
+默认情况下，token 和 tool-call budget 不设上限，因为当前产品立场是优先完成任务。只有当某次 design、run 或 resume 明确需要硬上限时，才使用 `--max-tokens` 或 `--max-tool-calls`。
 
-The interactive CLI uses Rich panels, keyboard-selectable options, readline-backed free-text input, and a persistent run monitor for the human-facing product shell. During `metaloop run`, MetaLoop preserves concise progress lines for contract compilation, structured artifacts, Codex turns and commands, verification, reviewer routing, repair attempts, and final verification. JSON mode remains plain machine-readable JSON, and normal text output keeps stable lines such as `mission:`, `review:`, `next:`, and `status:` for scripts or quick scanning.
+交互式 CLI 使用 Rich panels、键盘可选项、readline-backed free-text input，以及面向人类产品 shell 的持久 run monitor。执行 `metaloop run` 时，MetaLoop 会保留简洁进度行，用于展示 contract compilation、structured artifacts、Codex turns and commands、verification、reviewer routing、repair attempts 和 final verification。JSON 模式保持纯 machine-readable JSON；普通文本输出保留 `mission:`、`review:`、`next:`、`status:` 等稳定行，方便脚本和快速扫描。
 
-`metaloop` without a subcommand opens a persistent workspace console. By default, the shell starts a Codex SDK-backed UserAgent through `@openai/codex-sdk`. MetaLoop keeps one SDK thread alive for the shell session and stores the thread id at `.metaloop/user_agent_thread.json`, so reopening `metaloop` can resume the same Codex agent conversation. The agent can inspect the current project, talk with the user, and translate requests such as "start a design", "continue the previous run", "show why this is blocked", or "I am not satisfied with the result" into explicit MetaLoop actions.
+`metaloop` 不带子命令时会打开持久 workspace console。默认情况下，shell 会通过 `@openai/codex-sdk` 启动一个 Codex SDK-backed UserAgent。MetaLoop 会在 shell session 中保持一个 SDK thread，并把 thread id 存到 `.metaloop/user_agent_thread.json`；重新打开 `metaloop` 时可以通过该文件恢复同一个 Codex agent conversation。agent 可以检查当前项目、和用户对话，并把“start a design”、“continue the previous run”、“show why this is blocked”、“I am not satisfied with the result”等请求转换成明确的 MetaLoop actions。
 
-The shell, not the UserAgent, executes actions. Proposed actions are mapped to built-in commands such as `design`, `run`, `status`, `verify`, and `resume`, with confirmation where appropriate. The UserAgent does not directly modify locked MissionSpec, MissionCapsule, or GoalContract; revision/redesign application remains an explicit follow-up flow. Use `metaloop shell --user-agent exec` for the legacy one-shot `codex exec` adapter, or `metaloop shell --user-agent local` only for deterministic debugging without Codex.
+执行 action 的是 shell，不是 UserAgent。Proposed actions 会映射到内置命令，例如 `design`、`run`、`status`、`verify` 和 `resume`，并在合适时要求确认。UserAgent 不会直接修改 locked MissionSpec、MissionCapsule 或 GoalContract；revision / redesign application 仍然是显式后续流程。`metaloop shell --user-agent exec` 可用于旧的一次性 `codex exec` adapter；`metaloop shell --user-agent local` 只用于不依赖 Codex 的确定性调试。
 
-To forget only the user-facing Codex conversation for the current workspace:
+如果只想忘记当前 workspace 的用户侧 Codex conversation：
 
 ```bash
 metaloop shell --reset-user-agent-thread
 ```
 
-This removes `.metaloop/user_agent_thread.json` and leaves mission, capsule, run, verification, and attempt history artifacts intact.
+这会删除 `.metaloop/user_agent_thread.json`，但保留 mission、capsule、run、verification 和 attempt history artifacts。
 
-Interrupted work can be resumed. `metaloop design --resume` restores the saved Co-Design draft for the workspace. `metaloop resume` restores the latest non-terminal run checkpoint from `.metaloop/runs.sqlite`, or use `metaloop resume <run_id>`. For the v3 structured runtime, use `metaloop resume --mode goal --workspace .`; it reads `.metaloop/run.json` and either reports the terminal VerificationResult or resumes the goal-style run from the structured MissionSpec.
+中断的工作可以恢复。`metaloop design --resume` 会恢复当前 workspace 保存的 Co-Design draft。`metaloop resume` 会从 `.metaloop/runs.sqlite` 恢复最新非终态 run checkpoint，也可以使用 `metaloop resume <run_id>`。对于 v3 structured runtime，使用 `metaloop resume --mode goal --workspace .`；它会读取 `.metaloop/run.json`，并根据当前状态报告终态 VerificationResult 或从结构化 MissionSpec 恢复 goal-style run。
 
-Runs are persisted by default to `.metaloop/runs.sqlite`:
+run 默认持久化到 `.metaloop/runs.sqlite`：
 
 ```bash
 metaloop list
@@ -144,19 +162,19 @@ metaloop show <run_id>
 metaloop show <run_id> --events
 ```
 
-Legacy shorthand for direct intent runs still works when an argument is present:
+直接 intent run 的旧简写在有参数时仍然可用：
 
 ```bash
 metaloop "Create a dummy artifact"
 ```
 
-Use strict exit codes for automation:
+自动化场景可以使用严格 exit codes：
 
 ```bash
 metaloop run "Please split this into a next task proposal" --strict-exit-code
 # completed=0, failed=1, proposed_next_task=2, blocked=3
 ```
 
-## Current Scope
+## 当前范围
 
-MetaLoop Kernel does not spawn child MetaLoops. When a task should be split into an independent closed loop, the scheduler ends the current run with a structured `NextTaskProposal`.
+MetaLoop Kernel 不会 spawn child MetaLoops。当任务应该拆成一个独立闭环时，scheduler 会以结构化 `NextTaskProposal` 结束当前 run。
