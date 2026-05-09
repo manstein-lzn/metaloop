@@ -79,7 +79,7 @@ def test_event_log_appends_long_task_events(tmp_path) -> None:
         event_type="decision",
         agent="interface",
         summary="Keep full CLI as legacy/devtool and extract metaloop_core first.",
-        evidence=["docs/metaloop_clean_library_mission_plan.md"],
+        evidence=["docs/metaloop_prompt_first_code_backed.md"],
         next_action="Implement Phase 1 core API.",
     )
 

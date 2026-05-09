@@ -31,8 +31,6 @@ MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan ->
 - [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md)：轻量协议层重定位，以及 Codex Skill 的纪律边界。
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：dynamic ExtensionSpec / VerificationSpec 升级方案和验收标准。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：persistent Codex thread agent 协议和 `.metaloop/threads.json` registry。
-- [docs/metaloop_clean_library_mission_plan.md](docs/metaloop_clean_library_mission_plan.md)：clean library 第一阶段边界抽取计划。
-- [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)：final clean library 升级计划和最终 VerificationSpec。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环：Goal / Plan / Observe / Evaluate / Diagnose / Decide / Next Plan。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则：观测、评估、诊断、控制决策和下一步。
 - [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律，避免 code-first drift。
@@ -56,7 +54,7 @@ skills/metaloop   -> self-contained Codex Skill and bundled kernel
 metaloop CLI/TUI  -> legacy/devtool/CI/fallback full implementation
 ```
 
-详细任务计划见 [docs/metaloop_clean_library_mission_plan.md](docs/metaloop_clean_library_mission_plan.md) 和 [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)。skill kernel 仍然保持自包含，不要求目标环境先安装完整 package；仓库内通过 core/skill parity tests 防止 portable kernel 与 `metaloop_core` 的状态和验证语义漂移。
+当前稳定原则见 [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)、[docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md) 和 [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)。skill kernel 仍然保持自包含，不要求目标环境先安装完整 package；仓库内通过 core/skill parity tests 防止 portable kernel 与 `metaloop_core` 的状态和验证语义漂移。
 
 复杂项目中可以使用多个持久 Codex thread agent，但共享真相必须落在 `.metaloop/`：
 

@@ -12,9 +12,9 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 2026-05-09 反思 StateTune/MAPE20 运行后，核心结论进一步收敛：`$metaloop` skill 负责入口和对齐，skill-bundled kernel/schema/validators/`.metaloop` artifacts 负责检查和状态；复杂项目通过多个 persistent Codex thread agent 保留各自上下文和职责，不能再默认把任务切成多次失忆的 `codex exec` subprocess。Skill 应能一键部署，不能要求目标环境先安装完整 MetaLoop package 才能使用核心协议。
 
-2026-05-09 clean library 方向已启动：新增 `metaloop_core` 作为可复用协议内核边界，目标是让 skill、未来 wrapper 和 legacy CLI 共享 state/verification/thread/event primitives。full CLI/TUI/Codex adapters 继续作为 legacy/devtool/CI/fallback containment，不得被 `metaloop_core` 反向依赖。任务计划记录在 `docs/metaloop_clean_library_mission_plan.md`，当前 `.metaloop/mission_capsule.json` 已锁定对应 VerificationSpec。
+2026-05-09 clean library 方向已启动：新增 `metaloop_core` 作为可复用协议内核边界，目标是让 skill、未来 wrapper 和 legacy CLI 共享 state/verification/thread/event primitives。full CLI/TUI/Codex adapters 继续作为 legacy/devtool/CI/fallback containment，不得被 `metaloop_core` 反向依赖。
 
-2026-05-09 final clean library 升级已进入收口：`metaloop_core` 不再只是薄 API 边界，而是承担 Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry 和 event log 的 reusable protocol backend。`skills/metaloop` 仍保持自包含 portable kernel；仓库用 core/skill parity tests 证明二者在 verify、manual blocker、thread registry 和 event log 等关键语义上保持一致。最终升级计划记录在 `docs/metaloop_final_clean_library_plan.md`。
+2026-05-09 final clean library 升级已进入收口：`metaloop_core` 不再只是薄 API 边界，而是承担 Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry 和 event log 的 reusable protocol backend。`skills/metaloop` 仍保持自包含 portable kernel；仓库用 core/skill parity tests 证明二者在 verify、manual blocker、thread registry 和 event log 等关键语义上保持一致。
 
 2026-05-09 产品方法论进一步收敛为 Adaptive Goal Loop：`Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan`。StateTune/MAPE20 这类开放研究任务不应被做成研究专用分支，而应作为通用目标逼近闭环的高不确定性压力测试。`metaloop_core` 新增 `.metaloop/adaptive_loop.json` 状态和通用决策词汇；domain extension 继续只负责证据语言、指标、风险和 validators。
 
