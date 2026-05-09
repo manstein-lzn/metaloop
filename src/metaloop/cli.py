@@ -51,10 +51,15 @@ from metaloop.workers import CodexExecWorkerBackend
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="MetaLoop Kernel local runner.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "MetaLoop full-repository CLI for legacy runs, scripts, CI, and debugging. "
+            "For complex interactive work, prefer Codex CLI with the $metaloop skill and bundled kernel."
+        )
+    )
     subparsers = parser.add_subparsers(dest="command")
 
-    shell_parser = subparsers.add_parser("shell", help="Open the long-running MetaLoop workspace shell.")
+    shell_parser = subparsers.add_parser("shell", help="Open the legacy/experimental MetaLoop workspace shell.")
     shell_parser.add_argument("--workspace", default=".", help="Workspace root to inspect and operate on.")
     shell_parser.add_argument(
         "--user-agent",
@@ -148,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     design_parser.add_argument("--design-state", default=None, help="Path to Co-Design checkpoint JSON.")
     design_parser.add_argument("--json", action="store_true", help="Print generated MissionSpec JSON.")
 
-    run_parser = subparsers.add_parser("run", help="Run a MetaLoop Kernel mission.")
+    run_parser = subparsers.add_parser("run", help="Run a full-repository MetaLoop mission path.")
     run_parser.add_argument("intent", nargs="?", default=None, help="Mission intent.")
     run_parser.add_argument("--mission", help="Path to a MissionSpec JSON/YAML file.")
     run_parser.add_argument(

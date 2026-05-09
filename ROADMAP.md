@@ -1,14 +1,14 @@
 # MetaLoop Roadmap
 
-最后更新：2026-05-08
+最后更新：2026-05-09
 
-本文记录产品路线。当前实现主线是极简 v3：
+本文记录产品路线。当前产品主线已从 full repo CLI runtime 收敛为 skill-first：
 
 ```text
-MissionSpec -> GoalContract -> Codex goal runtime -> ExecutionReport -> VerificationResult
+Codex Skill -> minimal MetaLoop kernel -> persistent Codex thread agent(s) -> ExecutionReport -> VerificationResult
 ```
 
-宪法层详见 `docs/mission_capsule_constitution.md`。当前实现层详见 `docs/minimal_v3_codex_goal_architecture.md`。
+宪法层详见 `docs/mission_capsule_constitution.md`。skill/kernel 方向详见 `docs/metaloop_lightweight_protocol_reframing.md`、`docs/metaloop_dynamic_extension_protocol_upgrade.md` 和 `docs/metaloop_multi_thread_agent_protocol.md`。旧 full repo runtime 详见 `docs/minimal_v3_codex_goal_architecture.md`。
 
 ## 0. 产品原则
 
@@ -21,11 +21,11 @@ MetaLoop 的价值不是替 Codex 写代码，而是：
 
 Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调试。MetaLoop 不微观管理 Codex 的工具选择。
 
-2026-05-08 之后的产品方向是 skill-first，但不是 prompt-only：`$metaloop` skill 负责入口、对齐、设计纪律和 action 建议；skill-bundled kernel、MetaLoop CLI、schemas、validators 和 `.metaloop/` artifacts 负责确定性检查和状态；hooks、sandbox 或 wrapper runtime 只在真实任务证明必要时提供更强不可绕过约束。
+2026-05-09 之后的产品方向是 skill-first，但不是 prompt-only：`$metaloop` skill 负责入口、对齐、设计纪律和 action 建议；skill-bundled kernel、schemas、validators 和 `.metaloop/` artifacts 负责确定性检查和状态；full MetaLoop CLI 保留为 legacy/devtool/CI/fallback；hooks、sandbox 或 wrapper runtime 只在真实任务证明必要时提供更强不可绕过约束。
 
 ## v2.9 Skill-First Lightweight Protocol
 
-状态：v1.3 self-contained skill package 已新增。
+状态：v1.5 self-contained skill package 已新增。
 
 目标：把 MetaLoop 的入口变轻，让 Codex 可以通过可一键部署的 `$metaloop` skill 进入深度 design、capsule、verify、repair/redesign/resume 纪律，同时不把强约束只放在 prompt 中。
 
@@ -47,6 +47,9 @@ Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调
 - validator mode/severity：区分 executable/manual/unsupported 与 blocking/advisory
 - generic validators 扩展：`json_field_exists`、`file_contains`、`artifact_hash`、`forbidden_claim`、`manual_acceptance`、`resource_gate`
 - revision archive：`design --force` 必须带 revision reason 并归档旧 capsule
+- persistent thread registry：`threads status/register/update` 写入 `.metaloop/threads.json`
+- lightweight event log：`event append/list` 写入 `.metaloop/event_log.jsonl`
+- multi-thread agent protocol：记录职责、thread id、handoff 和状态，但不自动调度后台 agent
 
 验收：
 
@@ -58,7 +61,7 @@ Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调
 
 ## v3.0 Minimal Goal Governance
 
-状态：主路径已落地，Goal-Style Resume v1 和 Status Inspect UX v1 已实现。
+状态：full repo runtime 已落地，Goal-Style Resume v1 和 Status Inspect UX v1 已实现；现在定位为 legacy/devtool/CI/fallback，不再是复杂项目默认智能执行路径。
 
 目标：把默认执行路径从重型多 Agent pipeline 收敛为单个 Codex goal-style runtime，加上 MetaLoop 独立验收。
 
@@ -92,7 +95,7 @@ Codex 保留 coding agent 的主动性：搜索、阅读、修改、运行、调
 - 更细粒度的 goal runtime resume 分支：verify-only / repair-only / rerun
 - Codex 暴露非交互式 `/goal` API/CLI 后替换当前 `codex exec` 传输层
 
-验收：
+legacy runtime 验收：
 
 - `metaloop design && metaloop run` 是主路径。
 - 默认 run 只启动一个 Codex runtime。
@@ -151,9 +154,9 @@ v1 Capsule 范围：
 
 ## v3.2 Product CLI
 
-状态：v1 已实现，继续 polish；下一阶段产品形态要从 one-shot CLI 过渡到 long-running TUI shell。
+状态：v1 已实现；当前定位调整为 legacy/devtool/CI/fallback。不要再把 full CLI/TUI 当成复杂项目默认产品入口。
 
-目标：让自用路径稳定、少参数、可恢复。
+目标：让本仓库开发、脚本、CI、回归测试和调试路径稳定、少参数、可恢复。
 
 目标命令：
 
@@ -188,15 +191,15 @@ Goal-Style Resume v1:
 
 ## v3.2.5 Long-Running TUI Shell
 
-状态：v1 prompt-loop 已实现，继续打磨。
+状态：v1 prompt-loop 已实现；当前定位调整为实验/兼容路径。
 
-目标：用户打开 `metaloop` 后长期停留在一个 TUI 会话中完成设计、运行、验收、修复、状态检查和后续迭代，而不是记住一组离散命令。
+目标：保留已有 shell 能力供本仓库实验和兼容使用，但不继续把它作为默认推广入口。复杂项目默认入口应是 Codex CLI 中的 `$metaloop` skill，Codex agent 保持自然对话和长期上下文，skill-bundled kernel 负责状态和验证。
 
 核心判断：
 
-- 当前 `metaloop design` / `metaloop run` / `metaloop status` / `metaloop verify` 是正确的底层能力，但不是最终产品体验。
-- 最终自用形态应类似一个项目级控制台：启动一次，持续交互，随时知道当前 workspace 的 design/run/capsule/verification 状态。
-- CLI 子命令仍保留，作为脚本、调试和 CI 入口；TUI shell 是面向人的默认入口。
+- 当前 `metaloop design` / `metaloop run` / `metaloop status` / `metaloop verify` 是可用的 full implementation/devtool 能力，但不是复杂项目的默认智能层。
+- 不继续投入“模仿 Codex CLI 的 TUI v2”作为主线；Codex CLI 本身才是自然对话层。
+- CLI 子命令仍保留，作为脚本、调试和 CI 入口；TUI shell 不再是面向团队推广的默认入口。
 
 目标入口：
 
@@ -214,7 +217,7 @@ metaloop
 - 用户反馈“不满意/修改/重设计”会被归类为 feedback/revision，不直接修改 locked MissionSpec、MissionCapsule 或 GoalContract。
 - `redesign_required` 状态下，“继续”不会被映射为普通 worker rerun。
 
-TUI shell 应提供：
+如果继续维护 TUI shell，应提供：
 
 - 当前 workspace 总览：mission、capsule、run、verification、redesign、attempt history。
 - 用户自然语言输入区：用户可以说“开始设计”“继续上次任务”“这次结果我不满意”“帮我看现在卡在哪”。
@@ -229,7 +232,7 @@ TUI shell 应提供：
 - 不移除脚本友好的 CLI 子命令。
 - 不在 TUI 内引入递归 MetaLoop 编排。
 
-验收：
+legacy shell 验收：
 
 - 用户在一个新 repo 中运行 `metaloop`，无需记忆命令即可被引导完成 design -> run -> verify。
 - 用户中途退出后重新运行 `metaloop`，能看到当前状态并继续。
@@ -237,9 +240,9 @@ TUI shell 应提供：
 
 ## v3.2.6 User-Facing Agent
 
-状态：v1 Codex SDK-backed action proposal 已实现，thread id 持久化、跨 shell resume、reset/forget thread 已实现。
+状态：v1 Codex SDK-backed action proposal 已实现，thread id 持久化、跨 shell resume、reset/forget thread 已实现；当前作为实验路径保留。
 
-目标：增加一个专门面向用户的 agent，作为 MetaLoop 的交互层。它不直接替代 worker/reviewer，也不直接绕过结构化状态，而是负责理解用户意图、解释当前状态、建议下一步，并把用户自然语言转成明确的 MetaLoop action。
+目标：保留 shell/UserAgent 实验结果，并把有效能力沉淀回 `$metaloop` skill、kernel schema、thread registry、event log 和文档。团队默认交互层是 Codex CLI conversation，不是 MetaLoop 自建聊天界面。
 
 角色命名暂定：
 

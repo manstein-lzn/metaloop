@@ -13,12 +13,14 @@ MetaLoop should preserve:
 - repair/redesign/resume decisions
 - Codex SDK UserAgent as the human-facing entry
 - a bundled lightweight kernel for one-click skill deployment
+- persistent Codex thread agents when a project needs separate long-lived responsibilities
 
 MetaLoop should avoid leading with:
 
 - thick runtime frameworks
 - large fixed multi-agent systems
 - prompt-only discipline
+- repeated one-shot `codex exec` calls as the default intelligence layer for complex projects
 - code mechanisms that do not correspond to repeated real failures
 
 ## Skill Boundary
@@ -87,6 +89,49 @@ The bundled kernel also writes `.metaloop/execution_report.json` when execution 
 
 The minimum design gate is intentionally stricter than a plain prompt: intent alone is insufficient. A locked capsule should include design rationale, at least one explicit non-goal, acceptance criteria, and a hard verification path unless the user explicitly accepts manual-only review.
 
+## Persistent Agent Threads
+
+For complex projects, MetaLoop should not make a Python CLI pretend to be a better Codex runtime. Codex agents should keep the natural conversation and project understanding. MetaLoop should provide protocol state.
+
+The recommended shape is:
+
+```text
+interface thread: user conversation and project stewardship
+design thread: requirement exploration and VerificationSpec design
+worker thread: implementation against locked capsule
+reviewer thread: independent contract/evidence review
+verifier/kernel: deterministic checks from locked VerificationSpec
+```
+
+The bundled kernel records this in `.metaloop/threads.json`. The registry is not a scheduler. It is an audit and handoff artifact that records each role's `thread_id`, responsibility, status, current capsule, and last handoff artifact.
+
+Thread context is useful for intelligence and cost control, but it is not operational truth. Multi-thread agents must synchronize through `.metaloop/` artifacts: Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult, event log, attempts, decisions, and thread registry.
+
+First version rule: define and record roles before building automatic dispatch. Do not replace one-shot `codex exec` sprawl with a heavier scheduler until real usage demands it.
+
+## Event Log
+
+Long-running tasks need a compact audit trail between design and final verification. The bundled kernel writes this to:
+
+```text
+.metaloop/event_log.jsonl
+```
+
+Use events for observations, decisions, actions, blockers, handoffs, verification notes, repairs, redesign notes, and general notes. Events are especially useful when an agent discovers that the current plan cannot proceed, changes experimental direction, or hands work to another thread.
+
+Example:
+
+```bash
+python3 "$KERNEL" --workspace . event append \
+  --type blocker \
+  --agent worker \
+  --summary "CUDA unavailable; full training cannot start." \
+  --evidence "nvidia-smi failed" \
+  --next-action "mark blocked or redesign resource gate"
+```
+
+Events are not operational authority. They do not unlock a capsule, modify a VerificationSpec, or mark completion. They make long-task state inspectable and resumable without forcing a complex scheduler.
+
 ## VerificationSpec
 
 ExtensionSpec describes the task/domain verification language. VerificationSpec describes this exact task's completion gates. Both are locked inside the Mission Capsule.
@@ -126,3 +171,5 @@ extensions/<domain>/
 ```
 
 The current skill includes `extensions/generic/` as the reference package.
+
+For metric-driven or research tasks, `file_exists` can prove that an artifact exists, but it cannot prove success. Lock JSON metric gates, baseline comparisons, resource gates, forbidden claims, attempt-count evidence, or blocking manual review before execution. If the core metric fails, the run may be useful evidence, but it is not goal success.

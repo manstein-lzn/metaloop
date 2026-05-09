@@ -21,6 +21,52 @@ Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints wh
 
 MetaLoop is skill-first, not prompt-only.
 
+## Current Product Shape
+
+Prefer this skill-first shape for complex projects:
+
+```text
+Codex Skill entry
+  -> minimal bundled kernel for state / lock / verify / audit
+  -> one or more persistent Codex agent threads for intelligence and responsibility
+  -> shared truth through .metaloop artifacts, not through chat memory alone
+```
+
+Do not rebuild an external orchestration loop that repeatedly starts one-shot `codex exec` workers for complex work. One-shot execution is acceptable for smoke tests, CI wrappers, or simple command-based runs, but the default mental model is persistent Codex thread agents using this kernel as their protocol backend.
+
+For complex projects, multiple persistent threads may be useful when the responsibilities are truly different:
+
+- `interface`: talks with the user and keeps the product/project conversation coherent.
+- `design`: explores requirements deeply and drafts Mission Capsule plus VerificationSpec.
+- `worker`: executes against the locked capsule without weakening verification.
+- `reviewer`: reviews evidence and contract fit independently from worker self-report.
+- `verifier`: runs locked validators and classifies completion, repair, redesign, or limitation status.
+
+Register persistent agent threads in `.metaloop/threads.json` through the bundled kernel when thread ids are available:
+
+```bash
+python3 "$KERNEL" --workspace . threads register \
+  --role design \
+  --role-type design \
+  --thread-id "<codex-thread-id>" \
+  --responsibility "Draft Mission Capsule and VerificationSpec before execution."
+```
+
+Thread context is useful but not authoritative. The Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult, decisions, attempts, and thread registry under `.metaloop/` are the operational truth.
+
+For long-running work, record important observations and decisions as lightweight events instead of relying on private thread memory:
+
+```bash
+python3 "$KERNEL" --workspace . event append \
+  --type observation \
+  --agent worker \
+  --summary "CUDA unavailable; full training cannot start." \
+  --evidence "nvidia-smi failed" \
+  --next-action "mark blocked or redesign resource gate"
+```
+
+Events are not a scheduler. They are a compact audit trail that helps agents resume, hand off, and explain why a long task changed direction.
+
 ## When To Use
 
 Use MetaLoop when the task benefits from at least one of:
@@ -48,6 +94,8 @@ Use `python3 "$KERNEL" ...` from the target project workspace. If the runtime ex
 
 ```bash
 python3 "$KERNEL" --workspace . status
+python3 "$KERNEL" --workspace . threads status
+python3 "$KERNEL" --workspace . event list --limit 5
 ```
 
 2. Before execution, design the verification protocol. Classify the task domain, decide whether the bundled generic extension is enough, and if not, propose a task-specific ExtensionSpec plus VerificationSpec. Mark every validator with `mode` (`executable`, `manual`, or `unsupported`) and `severity` (`blocking` or `advisory`). Do not execute until the Mission Capsule, ExtensionSpec, and VerificationSpec are locked.
@@ -73,6 +121,8 @@ python3 "$KERNEL" --workspace . design \
   --non-goal "<what must not be claimed>" \
   --json-metric-gate '{"path":"summary.json","metric":"held_out.peak1_delta","operator":">=","threshold":0}'
 ```
+
+Do not use `file_exists` alone for metric, research, promotion, benchmark, or quality-breakthrough tasks. A file may prove that a run produced an artifact; it does not prove that the goal was achieved. Add metric gates, baseline comparisons, resource gates, forbidden claims, attempt requirements, or manual blocking review as appropriate.
 
 The portable kernel supports the bundled `generic` extension with `file_exists`, `command`, `forbidden_path`, `json_metric_gate`, `json_field_exists`, `file_contains`, `artifact_hash`, `forbidden_claim`, `manual_acceptance`, and `resource_gate`. Full `--extension-spec <path>` and `--verification-spec <path>` JSON objects can also be locked into the capsule.
 
@@ -121,6 +171,9 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 ## Hard Boundaries
 
 - Mission Capsule is task truth; chat history is not operational state.
+- Persistent thread context is not operational state unless summarized into `.metaloop/` artifacts.
+- Multi-thread agents must coordinate through `.metaloop/` artifacts, not private memory.
+- Important long-task observations, decisions, blockers, and handoffs should be recorded in `.metaloop/event_log.jsonl`.
 - Codex execution reports are candidate evidence, not final truth.
 - Intent alone is not enough to lock a Mission Capsule.
 - ExtensionSpec and VerificationSpec are locked with the Mission Capsule and carry hashes.
@@ -129,6 +182,7 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 - Replacing a locked capsule requires a revision reason and archives the previous capsule.
 - VerificationResult and user acceptance determine completion.
 - Hard validators failing means not complete.
+- If a core metric gate fails, say the target failed. Do not present `completed_with_limitations` or artifact production as goal success.
 - Skill instructions do not provide non-bypassable guarantees.
 - Do not build a parallel state system outside `.metaloop/` artifacts.
 

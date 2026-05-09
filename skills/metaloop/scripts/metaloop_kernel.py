@@ -17,8 +17,13 @@ EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
 EXTENSION_SPEC_SCHEMA = "metaloop.extension_spec"
 VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
 VERIFICATION_SCHEMA = "metaloop.lightweight_verification_result"
+THREAD_REGISTRY_SCHEMA = "metaloop.thread_registry"
+EVENT_SCHEMA = "metaloop.event"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
+THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
+CANONICAL_THREAD_TYPES = {"interface", "design", "worker", "reviewer", "verifier"}
+EVENT_TYPES = {"observation", "decision", "action", "blocker", "handoff", "verification", "repair", "redesign", "note"}
 KNOWN_EXECUTABLE_VALIDATORS = {
     "artifact_hash",
     "command",
@@ -93,6 +98,46 @@ def main(argv: list[str] | None = None) -> int:
     mark_parser.add_argument("--status", required=True, choices=sorted(CAPSULE_STATUSES))
     mark_parser.add_argument("--reason", default="", help="Reason for status transition.")
 
+    threads_parser = subparsers.add_parser("threads", help="Inspect or update the persistent agent thread registry.")
+    threads_subparsers = threads_parser.add_subparsers(dest="threads_command", required=True)
+
+    threads_status_parser = threads_subparsers.add_parser("status", help="Inspect registered MetaLoop agent threads.")
+    threads_status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    register_parser = threads_subparsers.add_parser("register", help="Register or replace one long-running agent thread.")
+    register_parser.add_argument("--role", required=True, help="Workspace-local role id, e.g. interface, design, worker-main, reviewer.")
+    register_parser.add_argument("--thread-id", required=True, help="Persistent Codex thread id for this role.")
+    register_parser.add_argument("--role-type", default="worker", help="Canonical role type: interface/design/worker/reviewer/verifier or custom slug.")
+    register_parser.add_argument("--agent-name", default="", help="Human-readable agent label.")
+    register_parser.add_argument("--responsibility", action="append", default=[], help="Responsibility boundary. Repeatable.")
+    register_parser.add_argument("--context-policy", default="persistent_thread_plus_metaloop_artifacts", help="How this agent should preserve context.")
+    register_parser.add_argument("--note", action="append", default=[], help="Audit note. Repeatable.")
+    register_parser.add_argument("--status", default="active", choices=sorted(THREAD_STATUSES), help="Initial thread status.")
+
+    update_thread_parser = threads_subparsers.add_parser("update", help="Update one registered agent thread without changing its role contract.")
+    update_thread_parser.add_argument("--role", required=True, help="Workspace-local role id to update.")
+    update_thread_parser.add_argument("--thread-id", help="New persistent thread id, if the agent was intentionally reset.")
+    update_thread_parser.add_argument("--status", choices=sorted(THREAD_STATUSES), help="New thread status.")
+    update_thread_parser.add_argument("--note", action="append", default=[], help="Audit note. Repeatable.")
+
+    event_parser = subparsers.add_parser("event", help="Append or inspect lightweight long-task events.")
+    event_subparsers = event_parser.add_subparsers(dest="event_command", required=True)
+
+    append_event_parser = event_subparsers.add_parser("append", help="Append a structured event to .metaloop/event_log.jsonl.")
+    append_event_parser.add_argument("--type", required=True, choices=sorted(EVENT_TYPES), help="Event type.")
+    append_event_parser.add_argument("--agent", default="", help="Agent role or thread role that produced the event.")
+    append_event_parser.add_argument("--summary", required=True, help="Concise event summary.")
+    append_event_parser.add_argument("--evidence", action="append", default=[], help="Evidence path, command, or observation. Repeatable.")
+    append_event_parser.add_argument("--decision", default="", help="Decision made by this event, when applicable.")
+    append_event_parser.add_argument("--next-action", default="", help="Suggested next action, when applicable.")
+    append_event_parser.add_argument("--thread-role", default="", help="Thread registry role associated with this event.")
+    append_event_parser.add_argument("--thread-id", default="", help="Persistent thread id associated with this event.")
+    append_event_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    list_event_parser = event_subparsers.add_parser("list", help="List recent events from .metaloop/event_log.jsonl.")
+    list_event_parser.add_argument("--limit", type=int, default=10, help="Number of recent events to show.")
+    list_event_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
     args = parser.parse_args(argv)
     workspace = Path(args.workspace).expanduser().resolve()
     if args.command == "status":
@@ -105,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
         return _verify(workspace, as_json=args.json)
     if args.command == "mark":
         return _mark(workspace, args.status, args.reason)
+    if args.command == "threads":
+        return _threads(workspace, args)
+    if args.command == "event":
+        return _event(workspace, args)
     return 2
 
 
@@ -118,7 +167,211 @@ def _status(workspace: Path, *, as_json: bool) -> int:
     print(f"current_status: {status['capsule'].get('current_status') or '-'}")
     print(f"execution: {status['execution']['state']} status={status['execution'].get('status') or '-'}")
     print(f"verification: {status['verification']['state']} status={status['verification'].get('status') or '-'}")
+    print(f"threads: {status['threads']['state']} count={status['threads'].get('count', 0)}")
+    print(f"events: {status['events']['state']} count={status['events'].get('count', 0)}")
     print(f"next_action: {status['next_action']}")
+    return 0
+
+
+def _threads(workspace: Path, args: argparse.Namespace) -> int:
+    if args.threads_command == "status":
+        return _threads_status(workspace, as_json=args.json)
+    if args.threads_command == "register":
+        return _threads_register(workspace, args)
+    if args.threads_command == "update":
+        return _threads_update(workspace, args)
+    return 2
+
+
+def _threads_status(workspace: Path, *, as_json: bool) -> int:
+    registry = _load_thread_registry(workspace)
+    errors = _validate_thread_registry(registry)
+    if errors:
+        if as_json:
+            print(json.dumps({"state": "invalid", "errors": errors}, indent=2, ensure_ascii=False))
+        else:
+            print("threads: invalid")
+            for error in errors:
+                print(f"- {error}")
+        return 1
+    if registry is None:
+        payload = {"state": "missing", "path": str(_thread_registry_path(workspace)), "agents": {}}
+        if as_json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print("threads: missing")
+            print(f"path: {_thread_registry_path(workspace)}")
+        return 0
+    if as_json:
+        print(json.dumps(registry, indent=2, ensure_ascii=False))
+        return 0
+    agents = registry.get("agents", {})
+    print("threads: ready")
+    print(f"path: {_thread_registry_path(workspace)}")
+    print(f"count: {len(agents)}")
+    for role, agent in sorted(agents.items()):
+        thread_id = str(agent.get("thread_id") or "")
+        print(
+            f"- {role}: type={agent.get('role_type') or '-'} "
+            f"status={agent.get('status') or '-'} thread={_short_thread_id(thread_id)}"
+        )
+    return 0
+
+
+def _threads_register(workspace: Path, args: argparse.Namespace) -> int:
+    registry = _ensure_thread_registry(workspace)
+    errors = _validate_thread_role_input(args.role, args.role_type, args.thread_id)
+    if errors:
+        print("thread_register_invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    role = args.role.strip()
+    agents = registry.setdefault("agents", {})
+    previous = agents.get(role)
+    now = _now()
+    responsibilities = list(args.responsibility) or _default_responsibilities(args.role_type, role)
+    history = list(previous.get("history", [])) if isinstance(previous, dict) else []
+    history.append(
+        {
+            "event": "registered" if previous is None else "replaced",
+            "thread_id": args.thread_id,
+            "status": args.status,
+            "notes": list(args.note),
+            "at": now,
+        }
+    )
+    agents[role] = {
+        "role": role,
+        "role_type": args.role_type.strip(),
+        "thread_id": args.thread_id.strip(),
+        "agent_name": args.agent_name.strip(),
+        "responsibilities": responsibilities,
+        "context_policy": args.context_policy.strip(),
+        "status": args.status,
+        "current_capsule_id": _current_capsule_id(workspace),
+        "last_handoff_artifact": ".metaloop/mission_capsule.json" if _load_capsule(workspace) else "",
+        "notes": list(args.note),
+        "created_at": previous.get("created_at", now) if isinstance(previous, dict) else now,
+        "updated_at": now,
+        "history": history,
+    }
+    _write_thread_registry(workspace, registry)
+    print(f"thread: {role}")
+    print(f"status: {args.status}")
+    print(f"registry: {_thread_registry_path(workspace)}")
+    return 0
+
+
+def _threads_update(workspace: Path, args: argparse.Namespace) -> int:
+    registry = _load_thread_registry(workspace)
+    errors = _validate_thread_registry(registry)
+    if registry is None or errors:
+        print("No valid thread registry found.", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    role = args.role.strip()
+    agents = registry.setdefault("agents", {})
+    agent = agents.get(role)
+    if not isinstance(agent, dict):
+        print(f"thread_not_found: {role}", file=sys.stderr)
+        return 1
+    if args.thread_id is not None and not args.thread_id.strip():
+        print("thread_id must be non-empty when provided", file=sys.stderr)
+        return 1
+    if args.thread_id:
+        agent["thread_id"] = args.thread_id.strip()
+    if args.status:
+        agent["status"] = args.status
+    if args.note:
+        agent.setdefault("notes", []).extend(args.note)
+    agent["current_capsule_id"] = _current_capsule_id(workspace)
+    if _load_capsule(workspace):
+        agent["last_handoff_artifact"] = ".metaloop/mission_capsule.json"
+    agent["updated_at"] = _now()
+    agent.setdefault("history", []).append(
+        {
+            "event": "updated",
+            "thread_id": agent.get("thread_id", ""),
+            "status": agent.get("status", ""),
+            "notes": list(args.note),
+            "at": agent["updated_at"],
+        }
+    )
+    _write_thread_registry(workspace, registry)
+    print(f"thread: {role}")
+    print(f"status: {agent.get('status')}")
+    print(f"registry: {_thread_registry_path(workspace)}")
+    return 0
+
+
+def _event(workspace: Path, args: argparse.Namespace) -> int:
+    if args.event_command == "append":
+        return _event_append(workspace, args)
+    if args.event_command == "list":
+        return _event_list(workspace, limit=args.limit, as_json=args.json)
+    return 2
+
+
+def _event_append(workspace: Path, args: argparse.Namespace) -> int:
+    summary = args.summary.strip()
+    if not summary:
+        print("event_invalid: --summary must be non-empty", file=sys.stderr)
+        return 1
+    event = {
+        "schema": EVENT_SCHEMA,
+        "version": "1.0",
+        "event_id": _new_id("event"),
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "capsule_id": _current_capsule_id(workspace),
+        "type": args.type,
+        "agent": args.agent.strip(),
+        "thread_role": args.thread_role.strip(),
+        "thread_id": args.thread_id.strip() or _thread_id_for_role(workspace, args.thread_role.strip() or args.agent.strip()),
+        "summary": summary,
+        "evidence": list(args.evidence),
+        "decision": args.decision.strip(),
+        "next_action": args.next_action.strip(),
+    }
+    errors = _validate_event(event)
+    if errors:
+        print("event_invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    _append_event(workspace, event)
+    if args.json:
+        print(json.dumps(event, indent=2, ensure_ascii=False))
+    else:
+        print(f"event: {event['event_id']}")
+        print(f"type: {event['type']}")
+        print(f"summary: {event['summary']}")
+        print(f"log: {_event_log_path(workspace)}")
+    return 0
+
+
+def _event_list(workspace: Path, *, limit: int, as_json: bool) -> int:
+    events, errors = _read_events(workspace)
+    if errors:
+        if as_json:
+            print(json.dumps({"state": "invalid", "errors": errors}, indent=2, ensure_ascii=False))
+        else:
+            print("events: invalid")
+            for error in errors:
+                print(f"- {error}")
+        return 1
+    if limit < 1:
+        limit = 1
+    recent = events[-limit:]
+    if as_json:
+        print(json.dumps({"state": "ready", "path": str(_event_log_path(workspace)), "events": recent}, indent=2, ensure_ascii=False))
+        return 0
+    print(f"events: ready count={len(events)} path={_event_log_path(workspace)}")
+    for event in recent:
+        agent = event.get("agent") or event.get("thread_role") or "-"
+        print(f"- {event.get('created_at')} {event.get('type')} agent={agent}: {event.get('summary')}")
     return 0
 
 
@@ -531,9 +784,13 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     capsule_path = _metaloop_dir(workspace) / "mission_capsule.json"
     execution_path = _metaloop_dir(workspace) / "execution_report.json"
     verification_path = _metaloop_dir(workspace) / "verification_result.json"
+    threads_path = _thread_registry_path(workspace)
+    event_path = _event_log_path(workspace)
     capsule = _read_json(capsule_path)
     execution = _read_json(execution_path)
     verification = _read_json(verification_path)
+    threads = _read_json(threads_path)
+    events, event_errors = _read_events(workspace)
     capsule_state = {"state": "missing", "path": None, "current_status": None}
     if isinstance(capsule, dict):
         capsule_errors = _validate_capsule(capsule)
@@ -552,7 +809,32 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     verification_state = {"state": "missing", "path": None, "status": None}
     if isinstance(verification, dict):
         verification_state = {"state": "ready", "path": str(verification_path), "status": verification.get("status")}
-    status = {"workspace": str(workspace), "capsule": capsule_state, "execution": execution_state, "verification": verification_state}
+    threads_state = {"state": "missing", "path": str(threads_path), "count": 0}
+    if isinstance(threads, dict):
+        thread_errors = _validate_thread_registry(threads)
+        agents = threads.get("agents", {}) if isinstance(threads.get("agents"), dict) else {}
+        threads_state = {
+            "state": "invalid" if thread_errors else "ready",
+            "path": str(threads_path),
+            "count": len(agents),
+            "roles": sorted(agents),
+            "errors": thread_errors,
+        }
+    events_state = {
+        "state": "invalid" if event_errors else ("ready" if event_path.exists() else "missing"),
+        "path": str(event_path),
+        "count": len(events),
+        "latest": events[-1] if events else None,
+        "errors": event_errors,
+    }
+    status = {
+        "workspace": str(workspace),
+        "capsule": capsule_state,
+        "execution": execution_state,
+        "verification": verification_state,
+        "threads": threads_state,
+        "events": events_state,
+    }
     status["next_action"] = _next_action(status)
     return status
 
@@ -1124,6 +1406,197 @@ def _update_capsule_status(workspace: Path, status: str, reason: str) -> None:
     capsule["updated_at"] = _now()
     capsule.setdefault("status_history", []).append({"status": status, "reason": reason, "at": _now()})
     path.write_text(json.dumps(capsule, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _thread_registry_path(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "threads.json"
+
+
+def _load_thread_registry(workspace: Path) -> dict[str, Any] | None:
+    payload = _read_json(_thread_registry_path(workspace))
+    return payload if isinstance(payload, dict) else None
+
+
+def _ensure_thread_registry(workspace: Path) -> dict[str, Any]:
+    registry = _load_thread_registry(workspace)
+    if registry is not None and not _validate_thread_registry(registry):
+        return registry
+    now = _now()
+    return {
+        "schema": THREAD_REGISTRY_SCHEMA,
+        "version": "1.0",
+        "workspace": str(workspace),
+        "created_at": now,
+        "updated_at": now,
+        "coordination_rule": "Persistent agent threads may keep their own context; shared operational truth is .metaloop artifacts.",
+        "agents": {},
+    }
+
+
+def _write_thread_registry(workspace: Path, registry: dict[str, Any]) -> None:
+    registry["updated_at"] = _now()
+    registry.setdefault("schema", THREAD_REGISTRY_SCHEMA)
+    registry.setdefault("version", "1.0")
+    registry.setdefault("workspace", str(workspace))
+    registry.setdefault("coordination_rule", "Persistent agent threads may keep their own context; shared operational truth is .metaloop artifacts.")
+    registry.setdefault("agents", {})
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    _thread_registry_path(workspace).write_text(json.dumps(registry, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _validate_thread_registry(payload: Any) -> list[str]:
+    if payload is None:
+        return []
+    if not isinstance(payload, dict):
+        return ["threads.json is not a JSON object"]
+    errors = []
+    if payload.get("schema") != THREAD_REGISTRY_SCHEMA:
+        errors.append(f"schema must be {THREAD_REGISTRY_SCHEMA}")
+    for key in ["version", "workspace", "created_at", "updated_at", "coordination_rule"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    agents = payload.get("agents")
+    if not isinstance(agents, dict):
+        errors.append("agents must be an object")
+        return errors
+    for role, agent in agents.items():
+        if not isinstance(role, str) or not role:
+            errors.append("agent role keys must be non-empty strings")
+            continue
+        if not isinstance(agent, dict):
+            errors.append(f"agents.{role} must be an object")
+            continue
+        errors.extend(_validate_thread_agent(role, agent))
+    return errors
+
+
+def _validate_thread_agent(role: str, agent: dict[str, Any]) -> list[str]:
+    errors = []
+    if agent.get("role") != role:
+        errors.append(f"agents.{role}.role must match registry key")
+    for key in ["role_type", "thread_id", "status", "created_at", "updated_at", "context_policy"]:
+        if not isinstance(agent.get(key), str) or not agent.get(key):
+            errors.append(f"agents.{role}.{key} must be a non-empty string")
+    if agent.get("status") not in THREAD_STATUSES:
+        errors.append(f"agents.{role}.status must be one of {sorted(THREAD_STATUSES)}")
+    for key in ["responsibilities", "notes", "history"]:
+        if not isinstance(agent.get(key), list):
+            errors.append(f"agents.{role}.{key} must be a list")
+    return errors
+
+
+def _validate_thread_role_input(role: str, role_type: str, thread_id: str) -> list[str]:
+    errors = []
+    if not _is_safe_role_slug(role):
+        errors.append("--role must be a non-empty slug using letters, numbers, dot, underscore, or hyphen")
+    if not _is_safe_role_slug(role_type):
+        errors.append("--role-type must be a non-empty slug using letters, numbers, dot, underscore, or hyphen")
+    if not thread_id.strip():
+        errors.append("--thread-id is required")
+    return errors
+
+
+def _is_safe_role_slug(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", value.strip()))
+
+
+def _default_responsibilities(role_type: str, role: str) -> list[str]:
+    normalized = role_type if role_type in CANONICAL_THREAD_TYPES else role
+    defaults = {
+        "interface": ["Talk with the user and map intent to MetaLoop protocol actions without executing unchecked work."],
+        "design": ["Explore requirements deeply and draft Mission Capsule plus VerificationSpec before execution."],
+        "worker": ["Execute implementation against the locked capsule without weakening verification."],
+        "reviewer": ["Review evidence and contract fit independently from worker self-report."],
+        "verifier": ["Run locked validators and classify completion, repair, redesign, or limitation status."],
+    }
+    return defaults.get(normalized, ["Maintain a persistent Codex thread for this bounded MetaLoop responsibility."])
+
+
+def _current_capsule_id(workspace: Path) -> str:
+    capsule = _load_capsule(workspace)
+    if not isinstance(capsule, dict):
+        return ""
+    value = capsule.get("capsule_id")
+    return value if isinstance(value, str) else ""
+
+
+def _short_thread_id(thread_id: str) -> str:
+    if len(thread_id) <= 18:
+        return thread_id or "-"
+    return f"{thread_id[:8]}...{thread_id[-8:]}"
+
+
+def _event_log_path(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "event_log.jsonl"
+
+
+def _append_event(workspace: Path, event: dict[str, Any]) -> None:
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    with _event_log_path(workspace).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _read_events(workspace: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    path = _event_log_path(workspace)
+    if not path.exists():
+        return [], []
+    events: list[dict[str, Any]] = []
+    errors: list[str] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return [], [f"event_log unreadable: {exc}"]
+    for index, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append(f"event_log line {index}: invalid JSON: {exc.msg}")
+            continue
+        event_errors = _validate_event(payload)
+        if event_errors:
+            errors.extend(f"event_log line {index}: {error}" for error in event_errors)
+            continue
+        events.append(payload)
+    return events, errors
+
+
+def _validate_event(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["event must be a JSON object"]
+    errors = []
+    if payload.get("schema") != EVENT_SCHEMA:
+        errors.append(f"schema must be {EVENT_SCHEMA}")
+    for key in ["version", "event_id", "created_at", "workspace", "type", "summary"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    if payload.get("type") not in EVENT_TYPES:
+        errors.append(f"type must be one of {sorted(EVENT_TYPES)}")
+    for key in ["capsule_id", "agent", "thread_role", "thread_id", "decision", "next_action"]:
+        if not isinstance(payload.get(key, ""), str):
+            errors.append(f"{key} must be a string")
+    if not isinstance(payload.get("evidence"), list):
+        errors.append("evidence must be a list")
+    elif not all(isinstance(item, str) for item in payload.get("evidence", [])):
+        errors.append("evidence items must be strings")
+    return errors
+
+
+def _thread_id_for_role(workspace: Path, role: str) -> str:
+    if not role:
+        return ""
+    registry = _load_thread_registry(workspace)
+    if not isinstance(registry, dict):
+        return ""
+    agents = registry.get("agents")
+    if not isinstance(agents, dict):
+        return ""
+    agent = agents.get(role)
+    if not isinstance(agent, dict):
+        return ""
+    thread_id = agent.get("thread_id")
+    return thread_id if isinstance(thread_id, str) else ""
 
 
 def _read_json(path: Path) -> Any:

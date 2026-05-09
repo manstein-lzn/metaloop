@@ -41,6 +41,24 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert "ExtensionSpec" in reference
     assert "Manual or unsupported blocking checks" in reference
     assert "extensions/<domain>/" in reference
+    assert "Persistent Agent Threads" in reference
+    assert ".metaloop/threads.json" in reference
+    assert "Thread context is useful for intelligence" in reference
+    assert "Event Log" in reference
+    assert ".metaloop/event_log.jsonl" in reference
+
+
+def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "metaloop_multi_thread_agent_protocol.md").read_text(encoding="utf-8")
+
+    assert "docs/metaloop_multi_thread_agent_protocol.md" in readme
+    assert ".metaloop/threads.json" in doc
+    assert ".metaloop/event_log.jsonl" in doc
+    assert "does not schedule background agents by itself" in doc
+    assert "Thread context is useful but not authoritative" in doc
+    assert "Events do not change locked contracts" in doc
+    assert "Do not use one-shot `codex exec` as the default intelligence layer" in doc
 
 
 def test_metaloop_skill_contains_generic_extension_package() -> None:
@@ -122,6 +140,169 @@ def test_bundled_skill_kernel_design_status_and_verify(tmp_path) -> None:
     assert second_verify.returncode == 0
     assert "verification: completed_verified" in second_verify.stdout
     assert (tmp_path / ".metaloop" / "verification_result.json").exists()
+
+
+def test_bundled_skill_kernel_tracks_persistent_agent_threads(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+
+    missing_status = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "threads", "status"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert missing_status.returncode == 0
+    assert "threads: missing" in missing_status.stdout
+
+    register = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "threads",
+            "register",
+            "--role",
+            "design",
+            "--role-type",
+            "design",
+            "--thread-id",
+            "thread-design-123",
+            "--agent-name",
+            "Design Agent",
+            "--responsibility",
+            "Draft Mission Capsule and VerificationSpec before execution.",
+            "--note",
+            "Registered during design handoff.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert register.returncode == 0
+    assert "thread: design" in register.stdout
+
+    registry_path = tmp_path / ".metaloop" / "threads.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert registry["schema"] == "metaloop.thread_registry"
+    assert registry["agents"]["design"]["thread_id"] == "thread-design-123"
+    assert registry["agents"]["design"]["role_type"] == "design"
+    assert "shared operational truth is .metaloop artifacts" in registry["coordination_rule"]
+
+    status = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "status"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert status.returncode == 0
+    assert "threads: ready count=1" in status.stdout
+
+    update = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "threads",
+            "update",
+            "--role",
+            "design",
+            "--status",
+            "handoff_required",
+            "--note",
+            "Design thread needs reviewer handoff.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert update.returncode == 0
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert registry["agents"]["design"]["status"] == "handoff_required"
+    assert registry["agents"]["design"]["history"][-1]["event"] == "updated"
+
+
+def test_bundled_skill_kernel_records_long_task_events(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+
+    register = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "threads",
+            "register",
+            "--role",
+            "worker",
+            "--role-type",
+            "worker",
+            "--thread-id",
+            "thread-worker-456",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert register.returncode == 0
+
+    append = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "event",
+            "append",
+            "--type",
+            "observation",
+            "--agent",
+            "worker",
+            "--summary",
+            "CUDA unavailable; full training cannot start.",
+            "--evidence",
+            "nvidia-smi failed",
+            "--next-action",
+            "mark blocked or redesign resource gate",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert append.returncode == 0
+    assert "event: event-" in append.stdout
+
+    event_log = tmp_path / ".metaloop" / "event_log.jsonl"
+    lines = event_log.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    event = json.loads(lines[0])
+    assert event["schema"] == "metaloop.event"
+    assert event["type"] == "observation"
+    assert event["thread_id"] == "thread-worker-456"
+    assert event["evidence"] == ["nvidia-smi failed"]
+
+    listed = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "event", "list", "--limit", "1"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert listed.returncode == 0
+    assert "events: ready count=1" in listed.stdout
+    assert "CUDA unavailable" in listed.stdout
+
+    status = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "status", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert status.returncode == 0
+    payload = json.loads(status.stdout)
+    assert payload["events"]["state"] == "ready"
+    assert payload["events"]["count"] == 1
+    assert payload["events"]["latest"]["summary"] == "CUDA unavailable; full training cannot start."
 
 
 def test_bundled_skill_kernel_does_not_hard_verify_manual_only_acceptance(tmp_path) -> None:

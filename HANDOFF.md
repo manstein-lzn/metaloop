@@ -1,6 +1,6 @@
 # MetaLoop Handoff
 
-最后更新：2026-05-08
+最后更新：2026-05-09
 
 本文是给新 Codex/session 的接力文档。目标是让新会话能快速恢复 MetaLoop 项目的当前状态，不从头推演，不丢失架构判断。
 
@@ -22,10 +22,10 @@
 然后基于当前状态继续，不要从头推演。
 
 当前最高优先级是：
-1. RedesignProposal -> Capsule revision / revised MissionSpec 的用户确认闭环。
-2. long-running TUI shell v2：把第一版 prompt-loop shell 打磨成更完整的状态流/命令面板。
-3. Codex SDK UserAgent v2：打磨 action confirmation UX 和 thread 状态展示。
-4. skill-first 重构：让 `$metaloop` skill 成为可一键部署的自包含 Codex Skill；强约束仍落在 bundled kernel/CLI/schema/validator/hook/sandbox/wrapper runtime。
+1. skill-first 收敛：让 `$metaloop` skill + bundled minimal kernel 成为默认推广路径。
+2. multi-thread agent protocol：用 `.metaloop/threads.json` 记录 persistent Codex thread 的职责、thread_id、handoff 和状态。
+3. VerificationSpec discipline：metric/research 任务不能再只用 file_exists，必须锁定真实指标、baseline、resource gate 和 forbidden claim。
+4. 现有 full CLI orchestration 降级为 legacy / compatibility，不继续把它包装成主智能运行时。
 ```
 
 ## 当前仓库状态
@@ -65,7 +65,7 @@ git status --short --branch
 
 ```bash
 .venv/bin/pytest -q
-# 246 passed
+# 249 passed
 ```
 
 环境注意：
@@ -77,13 +77,13 @@ git status --short --branch
 
 ## 项目一句话
 
-MetaLoop 是一个本地优先的任务治理层，用结构化 Co-Design、MissionSpec、MissionCapsule、GoalContract、ExecutionReport、VerificationResult 和 attempt history 来治理 Codex 执行复杂任务。
+MetaLoop 是一个本地优先的任务治理层，用 Codex Skill、minimal kernel、Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、thread registry 和 attempt history 来治理 Codex 推进复杂任务。
 
 核心判断：
 
 ```text
-Codex 是高智能执行器。
-MetaLoop 是结构化需求、边界、验收、审计、状态和长期维护层。
+Codex persistent thread agents 是高智能执行器。
+MetaLoop 是结构化任务合同、验证、审计、状态和长期维护层。
 ```
 
 MetaLoop 不是为了“比 Codex 更会写代码”。它的价值在于：
@@ -95,21 +95,19 @@ MetaLoop 不是为了“比 Codex 更会写代码”。它的价值在于：
 
 ## 当前主路径
 
-当前极简 v3 主路径：
+当前推荐主路径已经从 full CLI runtime 收敛为 skill-first：
 
 ```text
-Co-Design
-  -> MissionSpec
-  -> MissionCapsule
-  -> GoalContract
-  -> ordinary Codex exec goal-style runtime
-  -> ExecutionReport
-  -> VerificationResult
-  -> SoftReviewDecision
-  -> repair / redesign / complete
+Codex Skill entry
+  -> persistent Codex agent thread(s)
+  -> bundled minimal kernel locks Mission Capsule + VerificationSpec
+  -> worker thread executes against locked capsule
+  -> ExecutionReport as candidate evidence
+  -> kernel VerificationResult from locked validators
+  -> repair / redesign / resume / complete
 ```
 
-默认 `metaloop run` 对 mission 文件走 goal-style 单 Codex agent runtime。
+旧 `metaloop run` 对 mission 文件走 goal-style 单 Codex exec runtime，仍保留为 legacy/CI/调试路径，不再是复杂项目的产品默认心智。
 
 旧多 agent pipeline：
 
@@ -191,7 +189,10 @@ goal mode 行为：
 - `skills/metaloop/references/lightweight_protocol.md` 沉淀轻量协议和 skill 边界。
 - `skills/metaloop/extensions/generic/` 是可发现的 generic extension package 示例。
 - `skills/metaloop/scripts/metaloop_kernel.py` 是 skill 内置 lightweight kernel，避免目标环境必须先安装完整 MetaLoop package；当前支持 status/design/run/verify/mark，写入 capsule/execution_report/verification_result，并做 schema/hash 校验、design gate、locked ExtensionSpec/VerificationSpec、validator mode/severity、generic validators、revision archive 和 independent verification。
+- `skills/metaloop/scripts/metaloop_kernel.py` 还支持 `threads status/register/update`，写入 `.metaloop/threads.json`，用于记录 persistent Codex thread agent 的 role、role_type、thread_id、responsibilities、context_policy、status、handoff artifact 和 history。
+- `skills/metaloop/scripts/metaloop_kernel.py` 还支持 `event append/list`，写入 `.metaloop/event_log.jsonl`，用于记录长任务中的 observation、decision、action、blocker、handoff、verification、repair、redesign 和 note。
 - 核心原则：MetaLoop 可以 skill-first，但不能 prompt-only。Skill 负责入口和对齐；bundled kernel/代码负责检查和状态；hooks/sandbox/wrapper runtime 负责更强约束。
+- 多 thread agent 不能靠聊天记忆同步。共享真相必须是 `.metaloop/` artifacts。
 
 ### Runtime Review / Repair / Redesign
 
@@ -245,46 +246,30 @@ goal mode 行为：
 - 生成 Capsule revision id/version。
 - 新 run 绑定 revised contract。
 
-### 2. Long-Running TUI Shell v2
+### 2. Full CLI / TUI 保留策略
 
-目标：
+`metaloop` / `metaloop shell` / `metaloop run` 仍然保留，但定位已经变化：它们是 legacy、devtool、CI、debug 和 full repo implementation 路径，不再是复杂项目推广时的默认人机界面。
 
-```bash
-metaloop
-```
+不要继续把主要精力投入“模仿 Codex CLI 的 TUI v2”。Codex CLI 本身才是自然对话层；MetaLoop 应通过 `$metaloop` skill 和 bundled kernel 嵌入 Codex agent 工作流。
 
-启动后进入持续 TUI 会话，而不是一个命令跑完就退出。
+保留 CLI/TUI 的原因：
 
-v1 已实现 prompt-loop 最小闭环；v2 继续补齐更完整的状态流、命令面板、历史 attempts 视图和 revision flow。
+- 本仓库回归测试和脚本仍需要 deterministic entry。
+- 历史 goal runtime、Co-Design、resume、verify 代码仍可作为 full implementation 参考。
+- 某些 CI/非交互场景仍需要 `--json`、strict exit code 和 local validator。
 
-应提供：
+只有在明确需要 full repo CLI 时才继续修 CLI/TUI，且必须继续读写 `.metaloop/` artifacts，不能创建平行状态系统。
 
-- 当前 workspace 总览。
-- mission/capsule/run/verification/redesign/attempt history 状态。
-- 用户自然语言输入区。
-- 状态流：Codex、reviewer、verification、repair/redesign route 当前动作。
-- 命令面板：design、run、verify、status、resume、revise、quit。
-- 中断恢复：重启后从 `.metaloop/` 恢复。
+### 3. Codex SDK UserAgent / Shell 实验路径
 
-验收：
+v1 已默认接入 Codex SDK agent，并持久化 SDK thread id 支持跨 shell resume，也提供 reset/forget thread 命令。但经过 StateTune/MAPE20 运行反思，这条线不再作为默认产品主线。
 
-- 新 repo 中运行 `metaloop`，无需记忆命令即可完成 design -> run -> verify。
-- 中途退出后重新运行 `metaloop`，能看到当前状态并继续。
-- 用户说“不满意”时能进入 feedback/revise/redesign，而不是只显示 completed。
+如后续继续维护，只做两类事情：
 
-### 3. Codex SDK UserAgent v2
+- 保证 legacy shell 不误导用户，不把 one-shot `codex exec` 包装成长期智能。
+- 把已经验证有效的能力沉淀回 `$metaloop` skill、kernel schema、thread registry、event log 和 docs。
 
-目标：新增一个专门面向用户的 agent。
-
-职责：
-
-- 读取 `.metaloop/` 结构化状态。
-- 解释当前状态。
-- 理解用户自然语言。
-- 建议下一步。
-- 把用户意图映射为结构化 MetaLoop action。
-
-建议 action：
+已有 action：
 
 ```text
 start_design
@@ -299,7 +284,7 @@ apply_redesign
 quit
 ```
 
-v1 已默认接入 Codex SDK agent，并持久化 SDK thread id 支持跨 shell resume，也提供 reset/forget thread 命令。v2 应打磨 action confirmation UX 和 thread 状态展示，并继续遵守 fail-fast；Codex SDK 不可用时直接报错，不允许静默回落为看似智能的规则答复。规则映射只作为显式 local/basic mode。
+如果继续维护 shell/UserAgent，仍需遵守 fail-fast；Codex SDK 不可用时直接报错，不允许静默回落为看似智能的规则答复。规则映射只作为显式 local/basic mode。
 
 数据流建议：
 
@@ -443,14 +428,14 @@ git push
 1. 先读 `HANDOFF.md`。
 2. 再读 `STATE.md` 和 `ROADMAP.md`。
 3. 用 `git status --short --branch` 确认是否干净。
-4. 如果要开发，优先实现 TUI shell / UserAgent 的最小闭环。
+4. 如果要开发，优先强化 `$metaloop` skill、bundled kernel、thread registry、event log 和 VerificationSpec discipline。
 5. 每次修改后跑相关测试，关键路径跑 `.venv/bin/pytest -q`。
 6. 更新 `STATE.md` / `ROADMAP.md` / `HANDOFF.md`。
 7. commit。
 
 ## 推荐下一步开发切片
 
-第一阶段最小产品闭环已完成：
+第一阶段 legacy shell 最小闭环已完成：
 
 ```text
 metaloop
@@ -473,6 +458,6 @@ tests/test_user_agent.py
 tests/test_tui_shell.py
 ```
 
-接下来建议在此基础上实现 RedesignProposal apply/revision，而不是继续扩 shell 外观。
+接下来建议把复杂任务的默认入口转回 Codex CLI + `$metaloop` skill，并在 skill-bundled kernel 中继续完善 long-task state。
 
-第一版 TUI 是 Rich prompt loop，未引入 Textual。目标是产品控制流成立，而不是先做复杂 UI 框架。
+第一版 TUI 是 Rich prompt loop，未引入 Textual。除非用户明确要求，不要继续沿 TUI 外观做主线投入。
