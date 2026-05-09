@@ -138,7 +138,7 @@ metaloop run --mode rigorous
 
 默认情况下，token 和 tool-call budget 不设上限，因为当前产品立场是优先完成任务。只有当某次 design、run 或 resume 明确需要硬上限时，才使用 `--max-tokens` 或 `--max-tool-calls`。
 
-交互式 CLI 使用 Rich panels、键盘可选项、readline-backed free-text input，以及面向人类产品 shell 的持久 run monitor。执行 `metaloop run` 时，MetaLoop 会保留简洁进度行，用于展示 contract compilation、structured artifacts、Codex turns and commands、verification、reviewer routing、repair attempts 和 final verification。JSON 模式保持纯 machine-readable JSON；普通文本输出保留 `mission:`、`review:`、`next:`、`status:` 等稳定行，方便脚本和快速扫描。
+交互式 CLI 使用 Rich panels、键盘可选项、prompt-toolkit 编辑器式文本输入，以及面向人类产品 shell 的持久 run monitor。设计反馈输入支持正常粘贴、历史和光标编辑；`Enter` 提交，`Alt+Enter` 插入换行。执行 `metaloop run` 时，MetaLoop 会保留简洁进度行，用于展示 contract compilation、structured artifacts、Codex turns and commands、verification、reviewer routing、repair attempts 和 final verification。JSON 模式保持纯 machine-readable JSON；普通文本输出保留 `mission:`、`review:`、`next:`、`status:` 等稳定行，方便脚本和快速扫描。
 
 `metaloop` 不带子命令时会打开持久 workspace console。默认情况下，shell 会通过 `@openai/codex-sdk` 启动一个 Codex SDK-backed UserAgent。MetaLoop 会在 shell session 中保持一个 SDK thread，并把 thread id 存到 `.metaloop/user_agent_thread.json`；重新打开 `metaloop` 时可以通过该文件恢复同一个 Codex agent conversation。agent 可以检查当前项目、和用户对话，并把“start a design”、“continue the previous run”、“show why this is blocked”、“I am not satisfied with the result”等请求转换成明确的 MetaLoop actions。
 

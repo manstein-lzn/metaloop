@@ -68,6 +68,38 @@ def test_ask_uses_native_input_prompt_with_default(monkeypatch) -> None:
     assert prompts == ["Choose [1]: "]
 
 
+def test_design_review_uses_editor_prompt(monkeypatch, capsys) -> None:
+    ui = MetaLoopUI()
+    prompts = []
+
+    def fake_editor(label):
+        prompts.append(label)
+        return "需要深入复盘历史实验并扩大时间预算。"
+
+    monkeypatch.setattr(ui, "_ask_editor", fake_editor)
+
+    answer = ui.ask_design_review_action(1)
+    output = capsys.readouterr().out
+
+    assert answer == "需要深入复盘历史实验并扩大时间预算。"
+    assert prompts == ["Design review"]
+    assert "Alt+Enter inserts a newline" in output
+    assert "Paste works as normal" in output
+
+
+def test_design_review_reprompts_on_empty_editor_input(monkeypatch, capsys) -> None:
+    ui = MetaLoopUI()
+    answers = iter(["", "approve"])
+
+    monkeypatch.setattr(ui, "_ask_editor", lambda _label: next(answers))
+
+    answer = ui.ask_design_review_action(1)
+    output = capsys.readouterr().out
+
+    assert answer == "approve"
+    assert "No input submitted" in output
+
+
 def test_option_selector_lines_wrap_long_answers() -> None:
     ui = MetaLoopUI()
     ui.console.width = 50

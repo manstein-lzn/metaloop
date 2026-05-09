@@ -65,7 +65,7 @@ git status --short --branch
 
 ```bash
 .venv/bin/pytest -q
-# 241 passed
+# 243 passed
 ```
 
 环境注意：

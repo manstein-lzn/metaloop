@@ -15,6 +15,11 @@ import time
 import tty
 from typing import Any
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -32,6 +37,7 @@ except ImportError:  # pragma: no cover - readline is Unix-oriented.
     readline = None
 
 _READLINE_CONFIGURED = False
+_EDITOR_KEY_BINDINGS: KeyBindings | None = None
 
 
 class MetaLoopUI:
@@ -39,6 +45,7 @@ class MetaLoopUI:
         self.console = Console(stderr=stderr, highlight=False)
         self.error_console = Console(stderr=True, highlight=False)
         self._active_activity: ActivityReporter | None = None
+        self._prompt_session: PromptSession | None = None
         _configure_readline()
 
     def print_error(self, message: str) -> None:
@@ -154,12 +161,16 @@ class MetaLoopUI:
     def ask_design_review_action(self, round_index: int) -> str:
         self._pause_activity()
         prompt = (
-            "Type approve/lock/完成/确认 to lock, or give feedback like "
-            "constraint: ..., out_of_scope: ..., deliverable: ..., acceptance: ...\n\n"
-            "Press Enter to submit. Paste with your terminal paste shortcut or context menu."
+            "Type approve/lock/完成/确认 to lock, or write feedback for another design round.\n\n"
+            "Enter submits. Alt+Enter inserts a newline. Paste works as normal."
         )
         self.console.print(Panel(prompt, title=f"Design Refinement Round {round_index}", border_style="cyan", box=box.ROUNDED))
-        return self._ask("Design review").strip()
+        while True:
+            action = self._ask_editor("Design review").strip()
+            if not action:
+                self.print_status("No input submitted. Type approve/lock to finish, or enter feedback and press Enter.")
+                continue
+            return action
 
     def choose_mission(self, candidates: list[Path]) -> str:
         self.console.print(Panel("Multiple mission files found in this workspace.", title="Select Mission", border_style="yellow", box=box.ROUNDED))
@@ -256,6 +267,31 @@ class MetaLoopUI:
         if not value.strip() and default is not None:
             return default
         return value
+
+    def _ask_editor(self, label: str) -> str:
+        self._pause_activity()
+        if not sys.stdin.isatty():
+            return input(f"{label}: ")
+        session = self._get_prompt_session()
+        return session.prompt(
+            [("class:prompt", f"{label}: ")],
+            multiline=True,
+            key_bindings=_submit_enter_key_bindings(),
+            prompt_continuation="... ",
+            bottom_toolbar=HTML("<style bg='ansiblack' fg='ansiwhite'> Enter submits | Alt+Enter inserts newline | Ctrl+C cancels </style>"),
+        )
+
+    def _get_prompt_session(self) -> PromptSession:
+        if self._prompt_session is None:
+            history_path = Path.home() / ".metaloop" / "input_history"
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+            self._prompt_session = PromptSession(
+                history=FileHistory(str(history_path)),
+                enable_history_search=True,
+                complete_while_typing=False,
+                style=_prompt_style(),
+            )
+        return self._prompt_session
 
     def _select_option(self, options: list[str]) -> int | None:
         self._pause_activity()
@@ -723,6 +759,33 @@ def _read_key() -> str:
         return char
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def _submit_enter_key_bindings() -> KeyBindings:
+    global _EDITOR_KEY_BINDINGS
+    if _EDITOR_KEY_BINDINGS is not None:
+        return _EDITOR_KEY_BINDINGS
+    bindings = KeyBindings()
+
+    @bindings.add("enter")
+    def _(event) -> None:
+        event.app.exit(result=event.app.current_buffer.text)
+
+    @bindings.add("escape", "enter")
+    def _(event) -> None:
+        event.current_buffer.insert_text("\n")
+
+    _EDITOR_KEY_BINDINGS = bindings
+    return bindings
+
+
+def _prompt_style() -> Style:
+    return Style.from_dict(
+        {
+            "prompt": "bold ansicyan",
+            "bottom-toolbar": "bg:ansiblack ansiwhite",
+        }
+    )
 
 
 def _configure_readline() -> None:
