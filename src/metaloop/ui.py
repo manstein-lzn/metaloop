@@ -767,11 +767,11 @@ def _submit_enter_key_bindings() -> KeyBindings:
         return _EDITOR_KEY_BINDINGS
     bindings = KeyBindings()
 
-    @bindings.add("enter")
+    @bindings.add("c-m", eager=True)
     def _(event) -> None:
         event.app.exit(result=event.app.current_buffer.text)
 
-    @bindings.add("escape", "enter")
+    @bindings.add("escape", "c-m", eager=True)
     def _(event) -> None:
         event.current_buffer.insert_text("\n")
 

@@ -1,6 +1,6 @@
 from metaloop.co_design import CoDesignQuestion
 from metaloop.schemas import AcceptanceCriteria, FailureReport, KernelState, MissionSpec, RunStatus
-from metaloop.ui import MetaLoopUI, _recovery_hint
+from metaloop.ui import MetaLoopUI, _recovery_hint, _submit_enter_key_bindings
 
 
 def test_option_question_falls_back_to_numbered_input(monkeypatch, capsys) -> None:
@@ -98,6 +98,24 @@ def test_design_review_reprompts_on_empty_editor_input(monkeypatch, capsys) -> N
 
     assert answer == "approve"
     assert "No input submitted" in output
+
+
+def test_editor_prompt_enter_submits_and_alt_enter_inserts_newline() -> None:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.input.defaults import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    with create_pipe_input() as pipe:
+        session = PromptSession(input=pipe, output=DummyOutput())
+        pipe.send_text("hello\r")
+        result = session.prompt(multiline=True, key_bindings=_submit_enter_key_bindings())
+    assert result == "hello"
+
+    with create_pipe_input() as pipe:
+        session = PromptSession(input=pipe, output=DummyOutput())
+        pipe.send_text("hello\x1b\rworld\r")
+        result = session.prompt(multiline=True, key_bindings=_submit_enter_key_bindings())
+    assert result == "hello\nworld"
 
 
 def test_option_selector_lines_wrap_long_answers() -> None:
