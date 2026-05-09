@@ -46,6 +46,8 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert "Thread context is useful for intelligence" in reference
     assert "Event Log" in reference
     assert ".metaloop/event_log.jsonl" in reference
+    assert "Adaptive Goal Loop" in reference
+    assert "Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan" in reference
 
 
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
@@ -303,6 +305,73 @@ def test_bundled_skill_kernel_records_long_task_events(tmp_path) -> None:
     assert payload["events"]["state"] == "ready"
     assert payload["events"]["count"] == 1
     assert payload["events"]["latest"]["summary"] == "CUDA unavailable; full training cannot start."
+
+
+def test_bundled_skill_kernel_records_adaptive_goal_loop(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+
+    init = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "adaptive",
+            "init",
+            "--goal",
+            "Improve a measurable target.",
+            "--current-plan",
+            "Run a high-signal first attempt.",
+            "--success-criterion",
+            "Locked VerificationSpec passes.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert init.returncode == 0, init.stderr
+    assert "adaptive_loop: initialized" in init.stdout
+
+    record = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "adaptive",
+            "record",
+            "--plan",
+            "Run a high-signal first attempt.",
+            "--observation",
+            "The attempt produced evidence but did not satisfy the metric gate.",
+            "--evaluation-status",
+            "not_satisfied",
+            "--diagnosis",
+            "The implementation likely contains a bug in the attempted change.",
+            "--next-plan",
+            "Repair the implementation bug and rerun the same gate.",
+            "--evidence",
+            ".metaloop/verification_result.json",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert record.returncode == 0, record.stderr
+    assert "decision: repair" in record.stdout
+
+    state = json.loads((tmp_path / ".metaloop" / "adaptive_loop.json").read_text(encoding="utf-8"))
+    assert state["schema"] == "metaloop.adaptive_goal_loop"
+    assert state["iterations"][0]["decision"] == "repair"
+
+    status = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "status"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert status.returncode == 0
+    assert "adaptive_loop: ready status=active" in status.stdout
 
 
 def test_bundled_skill_kernel_does_not_hard_verify_manual_only_acceptance(tmp_path) -> None:

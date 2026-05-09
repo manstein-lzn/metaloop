@@ -7,6 +7,7 @@ MetaLoop is Codex's task design and stable execution protocol layer.
 MetaLoop should preserve:
 
 - deep Design
+- generic Adaptive Goal Loop for repeated problem solving
 - structured Mission Capsule
 - durable `.metaloop/` artifacts
 - independent VerificationResult
@@ -71,6 +72,28 @@ When output is unsatisfactory, classify before executing:
 
 Never let a worker repair silently mutate locked contract boundaries.
 
+## Adaptive Goal Loop
+
+MetaLoop's general method is not research-specific. Use the same loop for engineering, frontend, benchmark, research, operations, and paper reproduction tasks:
+
+```text
+Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan
+```
+
+The loop adds learning state to ordinary verification. Verification says whether the current result satisfies locked gates. Diagnosis says why it did or did not satisfy them and what the next plan should learn or improve.
+
+Use this decision vocabulary for repeated attempts:
+
+- `complete`: success criteria are satisfied.
+- `continue`: goal remains valid; another high-signal attempt is needed.
+- `repair`: implementation is defective; the target and strategy are still valid.
+- `redesign`: the goal, acceptance, scope, or VerificationSpec is wrong or incomplete.
+- `pivot`: keep the goal but change the strategy direction.
+- `stop`: do not continue under current constraints.
+- `escalate`: blocked by resource, permission, policy, or human authority.
+
+Domain extensions should define evidence types, metrics, thresholds, extractors, and risk rules. They should not define a separate domain-only loop.
+
 ## Deployment Shape
 
 The skill should be useful immediately after copying/installing the skill folder. It must not require the target machine to have the MetaLoop repository installed as a Python package.
@@ -85,7 +108,7 @@ scripts/metaloop_kernel.py
 
 The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. The full repository CLI can supersede it when available, but the skill must not depend on that external install for its core protocol behavior.
 
-In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
+In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Adaptive Goal Loop state, Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
 
 The bundled kernel also writes `.metaloop/execution_report.json` when execution can be represented as one or more workspace commands. Verification should require this report before claiming completion, because a validator pass without a recorded execution can hide skipped or drifted work.
 

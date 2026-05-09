@@ -13,6 +13,8 @@ from typing import Any
 
 
 CAPSULE_SCHEMA = "metaloop.lightweight_capsule"
+ADAPTIVE_LOOP_SCHEMA = "metaloop.adaptive_goal_loop"
+ADAPTIVE_ITERATION_SCHEMA = "metaloop.adaptive_goal_iteration"
 EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
 EXTENSION_SPEC_SCHEMA = "metaloop.extension_spec"
 VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
@@ -21,6 +23,9 @@ THREAD_REGISTRY_SCHEMA = "metaloop.thread_registry"
 EVENT_SCHEMA = "metaloop.event"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
+ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
+ADAPTIVE_DECISIONS = {"complete", "continue", "repair", "redesign", "pivot", "stop", "escalate"}
+EVALUATION_STATUSES = {"satisfied", "not_satisfied", "partial", "unknown", "blocked", "invalid_goal"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
 CANONICAL_THREAD_TYPES = {"interface", "design", "worker", "reviewer", "verifier"}
 EVENT_TYPES = {"observation", "decision", "action", "blocker", "handoff", "verification", "repair", "redesign", "note"}
@@ -98,6 +103,32 @@ def main(argv: list[str] | None = None) -> int:
     mark_parser.add_argument("--status", required=True, choices=sorted(CAPSULE_STATUSES))
     mark_parser.add_argument("--reason", default="", help="Reason for status transition.")
 
+    adaptive_parser = subparsers.add_parser("adaptive", help="Inspect or update the generic Adaptive Goal Loop state.")
+    adaptive_subparsers = adaptive_parser.add_subparsers(dest="adaptive_command", required=True)
+
+    adaptive_status_parser = adaptive_subparsers.add_parser("status", help="Inspect .metaloop/adaptive_loop.json.")
+    adaptive_status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    adaptive_init_parser = adaptive_subparsers.add_parser("init", help="Create or replace the Adaptive Goal Loop state.")
+    adaptive_init_parser.add_argument("--goal", required=True, help="Stable target for the goal-seeking loop.")
+    adaptive_init_parser.add_argument("--current-plan", required=True, help="Current plan before the next attempt.")
+    adaptive_init_parser.add_argument("--constraint", action="append", default=[], help="Constraint. Repeatable.")
+    adaptive_init_parser.add_argument("--success-criterion", action="append", default=[], help="Success criterion. Repeatable.")
+    adaptive_init_parser.add_argument("--known-fact", action="append", default=[], help="Known fact. Repeatable.")
+    adaptive_init_parser.add_argument("--open-question", action="append", default=[], help="Open question. Repeatable.")
+    adaptive_init_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    adaptive_record_parser = adaptive_subparsers.add_parser("record", help="Append one observe/evaluate/diagnose/decide iteration.")
+    adaptive_record_parser.add_argument("--plan", required=True, help="Plan that was attempted.")
+    adaptive_record_parser.add_argument("--rationale", default="", help="Why this attempt was worth running.")
+    adaptive_record_parser.add_argument("--observation", required=True, help="Observed result from this attempt.")
+    adaptive_record_parser.add_argument("--evaluation-status", required=True, choices=sorted(EVALUATION_STATUSES), help="Evaluation against locked criteria.")
+    adaptive_record_parser.add_argument("--diagnosis", required=True, help="Why the result did or did not satisfy the goal.")
+    adaptive_record_parser.add_argument("--decision", choices=sorted(ADAPTIVE_DECISIONS), help="Override automatic next decision.")
+    adaptive_record_parser.add_argument("--next-plan", required=True, help="Next plan grounded in this attempt's evidence.")
+    adaptive_record_parser.add_argument("--evidence", action="append", default=[], help="Evidence path, metric, or observation. Repeatable.")
+    adaptive_record_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
     threads_parser = subparsers.add_parser("threads", help="Inspect or update the persistent agent thread registry.")
     threads_subparsers = threads_parser.add_subparsers(dest="threads_command", required=True)
 
@@ -150,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
         return _verify(workspace, as_json=args.json)
     if args.command == "mark":
         return _mark(workspace, args.status, args.reason)
+    if args.command == "adaptive":
+        return _adaptive(workspace, args)
     if args.command == "threads":
         return _threads(workspace, args)
     if args.command == "event":
@@ -167,9 +200,139 @@ def _status(workspace: Path, *, as_json: bool) -> int:
     print(f"current_status: {status['capsule'].get('current_status') or '-'}")
     print(f"execution: {status['execution']['state']} status={status['execution'].get('status') or '-'}")
     print(f"verification: {status['verification']['state']} status={status['verification'].get('status') or '-'}")
+    print(f"adaptive_loop: {status['adaptive_loop']['state']} status={status['adaptive_loop'].get('status') or '-'}")
     print(f"threads: {status['threads']['state']} count={status['threads'].get('count', 0)}")
     print(f"events: {status['events']['state']} count={status['events'].get('count', 0)}")
     print(f"next_action: {status['next_action']}")
+    return 0
+
+
+def _adaptive(workspace: Path, args: argparse.Namespace) -> int:
+    if args.adaptive_command == "status":
+        return _adaptive_status(workspace, as_json=args.json)
+    if args.adaptive_command == "init":
+        return _adaptive_init(workspace, args)
+    if args.adaptive_command == "record":
+        return _adaptive_record(workspace, args)
+    return 2
+
+
+def _adaptive_status(workspace: Path, *, as_json: bool) -> int:
+    state = _load_adaptive_loop(workspace)
+    errors = _validate_adaptive_loop(state)
+    if errors:
+        if as_json:
+            print(json.dumps({"state": "invalid", "errors": errors}, indent=2, ensure_ascii=False))
+        else:
+            print("adaptive_loop: invalid")
+            for error in errors:
+                print(f"- {error}")
+        return 1
+    if state is None:
+        payload = {"state": "missing", "path": str(_adaptive_loop_path(workspace))}
+        if as_json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print("adaptive_loop: missing")
+            print(f"path: {_adaptive_loop_path(workspace)}")
+        return 0
+    if as_json:
+        print(json.dumps(state, indent=2, ensure_ascii=False))
+        return 0
+    print("adaptive_loop: ready")
+    print(f"path: {_adaptive_loop_path(workspace)}")
+    print(f"status: {state.get('status')}")
+    print(f"goal: {state.get('goal')}")
+    print(f"current_plan: {state.get('current_plan')}")
+    print(f"iterations: {len(state.get('iterations', []))}")
+    return 0
+
+
+def _adaptive_init(workspace: Path, args: argparse.Namespace) -> int:
+    errors = []
+    if not args.goal.strip():
+        errors.append("--goal must be non-empty")
+    if not args.current_plan.strip():
+        errors.append("--current-plan must be non-empty")
+    if errors:
+        print("adaptive_init_invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    now = _now()
+    state = {
+        "schema": ADAPTIVE_LOOP_SCHEMA,
+        "version": "1.0",
+        "loop_id": _new_id("loop"),
+        "created_at": now,
+        "updated_at": now,
+        "goal": args.goal.strip(),
+        "status": "active",
+        "current_plan": args.current_plan.strip(),
+        "constraints": _clean_strings(args.constraint),
+        "success_criteria": _clean_strings(args.success_criterion),
+        "known_facts": _clean_strings(args.known_fact),
+        "open_questions": _clean_strings(args.open_question),
+        "iterations": [],
+    }
+    errors = _validate_adaptive_loop(state)
+    if errors:
+        print("adaptive_init_invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    _write_adaptive_loop(workspace, state)
+    if args.json:
+        print(json.dumps(state, indent=2, ensure_ascii=False))
+    else:
+        print("adaptive_loop: initialized")
+        print(f"status: {state['status']}")
+        print(f"path: {_adaptive_loop_path(workspace)}")
+    return 0
+
+
+def _adaptive_record(workspace: Path, args: argparse.Namespace) -> int:
+    state = _load_adaptive_loop(workspace)
+    errors = _validate_adaptive_loop(state)
+    if state is None or errors:
+        print("No valid adaptive loop found. Run adaptive init first.", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    decision = args.decision or _decide_next(args.evaluation_status, diagnosis=args.diagnosis, next_plan=args.next_plan)
+    iteration = {
+        "schema": ADAPTIVE_ITERATION_SCHEMA,
+        "version": "1.0",
+        "iteration_id": _new_id("iteration"),
+        "created_at": _now(),
+        "goal": state["goal"],
+        "plan": args.plan.strip(),
+        "rationale": args.rationale.strip(),
+        "observation": args.observation.strip(),
+        "evaluation_status": args.evaluation_status,
+        "diagnosis": args.diagnosis.strip(),
+        "decision": decision,
+        "next_plan": args.next_plan.strip(),
+        "evidence": _clean_strings(args.evidence),
+    }
+    errors = _validate_adaptive_iteration(iteration)
+    if errors:
+        print("adaptive_record_invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    state["iterations"].append(iteration)
+    state["updated_at"] = _now()
+    state["current_plan"] = iteration["next_plan"]
+    state["status"] = _adaptive_status_after_decision(decision)
+    _write_adaptive_loop(workspace, state)
+    if args.json:
+        print(json.dumps(state, indent=2, ensure_ascii=False))
+    else:
+        print("adaptive_loop: recorded")
+        print(f"decision: {decision}")
+        print(f"status: {state['status']}")
+        print(f"iterations: {len(state['iterations'])}")
     return 0
 
 
@@ -782,11 +945,13 @@ def _run_command(workspace: Path, command: str, *, timeout: int) -> dict[str, An
 
 def _read_status(workspace: Path) -> dict[str, Any]:
     capsule_path = _metaloop_dir(workspace) / "mission_capsule.json"
+    adaptive_path = _adaptive_loop_path(workspace)
     execution_path = _metaloop_dir(workspace) / "execution_report.json"
     verification_path = _metaloop_dir(workspace) / "verification_result.json"
     threads_path = _thread_registry_path(workspace)
     event_path = _event_log_path(workspace)
     capsule = _read_json(capsule_path)
+    adaptive_loop = _read_json(adaptive_path)
     execution = _read_json(execution_path)
     verification = _read_json(verification_path)
     threads = _read_json(threads_path)
@@ -802,6 +967,18 @@ def _read_status(workspace: Path) -> dict[str, Any]:
             "intent": capsule.get("intent", ""),
             "revision": capsule.get("revision"),
             "errors": capsule_errors,
+        }
+    adaptive_state = {"state": "missing", "path": str(adaptive_path), "status": None}
+    if isinstance(adaptive_loop, dict):
+        adaptive_errors = _validate_adaptive_loop(adaptive_loop)
+        adaptive_state = {
+            "state": "invalid" if adaptive_errors else "ready",
+            "path": str(adaptive_path),
+            "status": adaptive_loop.get("status"),
+            "goal": adaptive_loop.get("goal", ""),
+            "current_plan": adaptive_loop.get("current_plan", ""),
+            "iterations": len(adaptive_loop.get("iterations", [])) if isinstance(adaptive_loop.get("iterations"), list) else 0,
+            "errors": adaptive_errors,
         }
     execution_state = {"state": "missing", "path": None, "status": None}
     if isinstance(execution, dict):
@@ -830,6 +1007,7 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     status = {
         "workspace": str(workspace),
         "capsule": capsule_state,
+        "adaptive_loop": adaptive_state,
         "execution": execution_state,
         "verification": verification_state,
         "threads": threads_state,
@@ -1604,6 +1782,92 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _adaptive_loop_path(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "adaptive_loop.json"
+
+
+def _load_adaptive_loop(workspace: Path) -> dict[str, Any] | None:
+    payload = _read_json(_adaptive_loop_path(workspace))
+    return payload if isinstance(payload, dict) else None
+
+
+def _write_adaptive_loop(workspace: Path, state: dict[str, Any]) -> None:
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    _adaptive_loop_path(workspace).write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _validate_adaptive_loop(payload: Any) -> list[str]:
+    if payload is None:
+        return []
+    if not isinstance(payload, dict):
+        return ["adaptive_loop.json is not a JSON object"]
+    errors = []
+    if payload.get("schema") != ADAPTIVE_LOOP_SCHEMA:
+        errors.append(f"schema must be {ADAPTIVE_LOOP_SCHEMA}")
+    for key in ["version", "loop_id", "created_at", "updated_at", "goal", "status", "current_plan"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    if payload.get("status") not in ADAPTIVE_LOOP_STATUSES:
+        errors.append(f"status must be one of {sorted(ADAPTIVE_LOOP_STATUSES)}")
+    for key in ["constraints", "success_criteria", "known_facts", "open_questions", "iterations"]:
+        if not isinstance(payload.get(key), list):
+            errors.append(f"{key} must be a list")
+    for index, iteration in enumerate(payload.get("iterations", [])):
+        errors.extend(f"iterations[{index}].{error}" for error in _validate_adaptive_iteration(iteration))
+    return errors
+
+
+def _validate_adaptive_iteration(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["iteration must be a JSON object"]
+    errors = []
+    if payload.get("schema") != ADAPTIVE_ITERATION_SCHEMA:
+        errors.append(f"schema must be {ADAPTIVE_ITERATION_SCHEMA}")
+    for key in ["version", "iteration_id", "created_at", "goal", "plan", "observation", "evaluation_status", "diagnosis", "decision", "next_plan"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    if payload.get("evaluation_status") not in EVALUATION_STATUSES:
+        errors.append(f"evaluation_status must be one of {sorted(EVALUATION_STATUSES)}")
+    if payload.get("decision") not in ADAPTIVE_DECISIONS:
+        errors.append(f"decision must be one of {sorted(ADAPTIVE_DECISIONS)}")
+    if not isinstance(payload.get("evidence"), list):
+        errors.append("evidence must be a list")
+    elif not all(isinstance(item, str) for item in payload.get("evidence", [])):
+        errors.append("evidence items must be strings")
+    return errors
+
+
+def _decide_next(evaluation_status: str, *, diagnosis: str = "", next_plan: str = "") -> str:
+    text = f"{diagnosis} {next_plan}".lower()
+    if evaluation_status == "satisfied":
+        return "complete"
+    if evaluation_status == "invalid_goal":
+        return "redesign"
+    if evaluation_status == "blocked":
+        return "escalate" if any(term in text for term in ["permission", "resource", "approval", "gpu", "blocked"]) else "stop"
+    if any(term in text for term in ["pivot", "wrong direction", "目标不对", "方向不对"]):
+        return "pivot"
+    if any(term in text for term in ["contract", "acceptance", "验收", "scope", "目标"]):
+        return "redesign"
+    if any(term in text for term in ["bug", "regression", "implementation", "修复", "错误"]):
+        return "repair"
+    return "continue"
+
+
+def _adaptive_status_after_decision(decision: str) -> str:
+    if decision == "complete":
+        return "completed"
+    if decision == "stop":
+        return "stopped"
+    if decision == "escalate":
+        return "blocked"
+    return "active"
+
+
+def _clean_strings(values: list[str] | tuple[str, ...]) -> list[str]:
+    return [item.strip() for item in values if isinstance(item, str) and item.strip()]
 
 
 def _metaloop_dir(workspace: Path) -> Path:

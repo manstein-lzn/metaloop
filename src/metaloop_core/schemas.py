@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 CAPSULE_SCHEMA = "metaloop.lightweight_capsule"
+ADAPTIVE_LOOP_SCHEMA = "metaloop.adaptive_goal_loop"
+ADAPTIVE_ITERATION_SCHEMA = "metaloop.adaptive_goal_iteration"
 EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
 EXTENSION_SPEC_SCHEMA = "metaloop.extension_spec"
 VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
@@ -26,3 +28,6 @@ MODES = {"executable", "manual", "unsupported"}
 SEVERITIES = {"blocking", "advisory"}
 
 REPAIR_DECISIONS = {"repair", "redesign", "resume", "complete"}
+ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
+ADAPTIVE_DECISIONS = {"complete", "continue", "repair", "redesign", "pivot", "stop", "escalate"}
+EVALUATION_STATUSES = {"satisfied", "not_satisfied", "partial", "unknown", "blocked", "invalid_goal"}

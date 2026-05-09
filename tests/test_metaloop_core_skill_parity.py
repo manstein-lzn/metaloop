@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from metaloop_core import EventLog, ThreadRegistry, WorkspaceState
+from metaloop_core.adaptive_loop import load_adaptive_loop, new_adaptive_loop, record_iteration, write_adaptive_loop
 from metaloop_core.verification import verify_workspace
 
 
@@ -139,3 +140,78 @@ def test_core_and_skill_kernel_share_event_log_semantics(tmp_path) -> None:
     assert skill_events[0]["schema"] == core_events[0]["schema"] == "metaloop.event"
     assert skill_events[0]["event_id"] == core_events[0]["event_id"] == skill_event["event_id"]
     assert core_events[0]["summary"].startswith("Keep skill kernel self-contained")
+
+
+def test_core_and_skill_kernel_share_adaptive_loop_semantics(tmp_path) -> None:
+    init = _run(
+        [
+            "adaptive",
+            "init",
+            "--goal",
+            "Improve a measurable target without weakening locked acceptance.",
+            "--current-plan",
+            "Run the first high-signal attempt.",
+            "--success-criterion",
+            "Locked VerificationSpec passes.",
+            "--known-fact",
+            "Previous attempts did not satisfy the target.",
+            "--json",
+        ],
+        tmp_path,
+    )
+    assert init.returncode == 0, init.stderr
+    skill_state = json.loads(init.stdout)
+    core_state = load_adaptive_loop(tmp_path)
+
+    assert core_state is not None
+    assert skill_state["schema"] == core_state["schema"] == "metaloop.adaptive_goal_loop"
+    assert skill_state["goal"] == core_state["goal"]
+    assert WorkspaceState(tmp_path).status()["adaptive_loop"]["status"] == "active"
+
+    record = _run(
+        [
+            "adaptive",
+            "record",
+            "--plan",
+            "Run the first high-signal attempt.",
+            "--observation",
+            "The artifact was produced but the metric gate did not pass.",
+            "--evaluation-status",
+            "not_satisfied",
+            "--diagnosis",
+            "The likely issue is an implementation bug in the attempted change.",
+            "--next-plan",
+            "Repair the implementation bug and rerun the same metric gate.",
+            "--evidence",
+            ".metaloop/verification_result.json",
+            "--json",
+        ],
+        tmp_path,
+    )
+    assert record.returncode == 0, record.stderr
+    skill_updated = json.loads(record.stdout)
+    core_updated = load_adaptive_loop(tmp_path)
+
+    assert core_updated is not None
+    assert skill_updated["iterations"][0]["decision"] == core_updated["iterations"][0]["decision"] == "repair"
+    assert core_updated["current_plan"].startswith("Repair the implementation bug")
+
+
+def test_core_written_adaptive_loop_is_readable_by_skill_kernel(tmp_path) -> None:
+    state = new_adaptive_loop(goal="Ship a reliable change.", current_plan="Implement and verify the smallest useful slice.")
+    write_adaptive_loop(tmp_path, state)
+    record_iteration(
+        tmp_path,
+        plan="Implement and verify the smallest useful slice.",
+        observation="Tests passed but the reviewer found the goal was scoped too narrowly.",
+        evaluation_status="partial",
+        diagnosis="The acceptance criteria miss an important user workflow.",
+        next_plan="Redesign acceptance criteria before further implementation.",
+    )
+
+    skill_status = _run(["adaptive", "status", "--json"], tmp_path)
+    assert skill_status.returncode == 0, skill_status.stderr
+    skill_state = json.loads(skill_status.stdout)
+
+    assert skill_state["schema"] == "metaloop.adaptive_goal_loop"
+    assert skill_state["iterations"][0]["decision"] == "redesign"

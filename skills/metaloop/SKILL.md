@@ -29,8 +29,17 @@ Prefer this skill-first shape for complex projects:
 Codex Skill entry
   -> minimal bundled kernel for state / lock / verify / audit
   -> one or more persistent Codex agent threads for intelligence and responsibility
+  -> Adaptive Goal Loop for iterative problem solving
   -> shared truth through .metaloop artifacts, not through chat memory alone
 ```
+
+For complex or open-ended work, use MetaLoop as a generic Adaptive Goal Loop, not a research-only workflow:
+
+```text
+Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan
+```
+
+Every domain uses the same loop. Domain extensions define evidence language, metrics, risks, and validators; they do not replace the loop with a separate task-specific process.
 
 Do not rebuild an external orchestration loop that repeatedly starts one-shot `codex exec` workers for complex work. One-shot execution is acceptable for smoke tests, CI wrappers, or simple command-based runs, but the default mental model is persistent Codex thread agents using this kernel as their protocol backend.
 
@@ -54,6 +63,15 @@ python3 "$KERNEL" --workspace . threads register \
 
 Thread context is useful but not authoritative. The Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult, decisions, attempts, and thread registry under `.metaloop/` are the operational truth.
 
+For long-running goal-seeking tasks, each attempt should preserve what was learned, not just whether a command ran. Record or maintain an adaptive loop state when useful:
+
+- goal and current plan
+- observation from the latest attempt
+- evaluation against the locked criteria
+- diagnosis of why it did or did not work
+- decision: `complete`, `continue`, `repair`, `redesign`, `pivot`, `stop`, or `escalate`
+- next plan and evidence
+
 For long-running work, record important observations and decisions as lightweight events instead of relying on private thread memory:
 
 ```bash
@@ -72,6 +90,7 @@ Events are not a scheduler. They are a compact audit trail that helps agents res
 Use MetaLoop when the task benefits from at least one of:
 
 - deep design before implementation
+- iterative goal seeking where success is uncertain or requires repeated attempts
 - explicit scope, non-goals, constraints, or philosophical tradeoffs
 - structured acceptance criteria or evidence requirements
 - independent verification instead of trusting Codex self-report
@@ -159,6 +178,8 @@ python3 "$KERNEL" --workspace . mark --status redesign_required --reason "Contra
 
 Use the full `metaloop` CLI only when it is available and the user wants the repository implementation. The bundled kernel is the skill's portable minimum.
 
+For repeated attempts, do not merely rerun commands. Apply the Adaptive Goal Loop before the next attempt: summarize the observation, evaluate it against locked criteria, diagnose the likely cause, choose `continue` / `repair` / `redesign` / `pivot` / `stop` / `escalate`, and make the next plan explicitly depend on the evidence from the previous attempt.
+
 ## Dissatisfaction Classification
 
 - `repair`: target and acceptance are still correct; implementation is defective.
@@ -173,6 +194,7 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 - Mission Capsule is task truth; chat history is not operational state.
 - Persistent thread context is not operational state unless summarized into `.metaloop/` artifacts.
 - Multi-thread agents must coordinate through `.metaloop/` artifacts, not private memory.
+- Repeated attempts must update shared understanding through observation, evaluation, diagnosis, decision, and next plan.
 - Important long-task observations, decisions, blockers, and handoffs should be recorded in `.metaloop/event_log.jsonl`.
 - Codex execution reports are candidate evidence, not final truth.
 - Intent alone is not enough to lock a Mission Capsule.
