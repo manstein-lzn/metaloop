@@ -12,14 +12,20 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 2026-05-09 反思 StateTune/MAPE20 运行后，核心结论进一步收敛：`$metaloop` skill 负责入口和对齐，skill-bundled kernel/schema/validators/`.metaloop` artifacts 负责检查和状态；复杂项目通过多个 persistent Codex thread agent 保留各自上下文和职责，不能再默认把任务切成多次失忆的 `codex exec` subprocess。Skill 应能一键部署，不能要求目标环境先安装完整 MetaLoop package 才能使用核心协议。
 
+2026-05-09 clean library 方向已启动：新增 `metaloop_core` 作为可复用协议内核边界，目标是让 skill、未来 wrapper 和 legacy CLI 共享 state/verification/thread/event primitives。full CLI/TUI/Codex adapters 继续作为 legacy/devtool/CI/fallback containment，不得被 `metaloop_core` 反向依赖。任务计划记录在 `docs/metaloop_clean_library_mission_plan.md`，当前 `.metaloop/mission_capsule.json` 已锁定对应 VerificationSpec。
+
+2026-05-09 final clean library 升级已进入收口：`metaloop_core` 不再只是薄 API 边界，而是承担 Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry 和 event log 的 reusable protocol backend。`skills/metaloop` 仍保持自包含 portable kernel；仓库用 core/skill parity tests 证明二者在 verify、manual blocker、thread registry 和 event log 等关键语义上保持一致。最终升级计划记录在 `docs/metaloop_final_clean_library_plan.md`。
+
 ## 当前架构决策
 
 - MetaLoop 负责 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、thread registry、证据和审计。
+- `metaloop_core` 是 clean library 边界，承载 portable `.metaloop/` state、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、verification summary、ids/time helper 和 repair/redesign vocabulary。
 - Codex persistent thread agents 负责探索、需求澄清、设计、写代码、调试、测试和长任务推进。
 - Codex `/goal complete` 或 Codex 自述完成不能等同于 MetaLoop verified completion。
 - MetaLoop 不内建重型调度器，不默认自动启动多个后台 agent。
 - 多 thread agent 是职责和上下文边界，不是新的外部 orchestration loop；共享真相只来自 `.metaloop/` artifacts。
 - 现有 long-running TUI shell 降级为实验/兼容路径；不要继续以模仿 Codex CLI 为主线。
+- `metaloop_core` 不能依赖 `metaloop.cli`、`metaloop.ui`、`metaloop.tui_shell`、`metaloop.codex_adapter`、`metaloop.goal_runtime`、`metaloop.user_agent`、`metaloop.agents` 或 `metaloop.workers`。
 - 已新增专门对接用户的 UserAgent / InterfaceAgent v1。默认是 Codex SDK-backed UserAgent：Python shell 启动 `src/metaloop/codex_sdk_bridge.mjs`，Node bridge 使用 `@openai/codex-sdk` 创建/保留 thread；Codex 理解当前项目和用户输入，输出 `ProposedAction`；shell 负责确认并调用底层 `design/run/status/verify/resume`。`codex exec` UserAgent 保留为 `--user-agent exec` 兼容模式，本地规则 UserAgent 只保留为 `--user-agent local` 调试模式。
 - 旧的 brainstormer/planner/worker/reviewer/scheduler 多 Agent pipeline 保留为 `--mode rigorous` 或显式 `--worker` 诊断路径。
 - v3 MVP 不实现完整 SKS/SCP/ITC/AMP 协议栈；这些文档保留为原则和 backlog。
@@ -127,7 +133,7 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 ```bash
 .venv/bin/pytest -q
-# 249 passed
+# 263 passed
 ```
 
 ## 重要文档

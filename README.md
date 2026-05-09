@@ -27,6 +27,8 @@ Codex Skill -> minimal MetaLoop kernel -> persistent Codex agent thread(s) -> Ex
 - [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md)：轻量协议层重定位，以及 Codex Skill 的纪律边界。
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：dynamic ExtensionSpec / VerificationSpec 升级方案和验收标准。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：persistent Codex thread agent 协议和 `.metaloop/threads.json` registry。
+- [docs/metaloop_clean_library_mission_plan.md](docs/metaloop_clean_library_mission_plan.md)：clean library 第一阶段边界抽取计划。
+- [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)：final clean library 升级计划和最终 VerificationSpec。
 - [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md)：团队内测指南和推广边界。
 - [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md)：可直接复制给 Codex 的一键 skill 安装 prompt。
 - [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md)：Alpha 发布说明。
@@ -34,6 +36,20 @@ Codex Skill -> minimal MetaLoop kernel -> persistent Codex agent thread(s) -> Ex
 ## Skill-First 方向
 
 MetaLoop 正在被重定位为 Codex 的 skill-first、not prompt-only 协议层。`$metaloop` skill 是轻量入口和对齐界面；真正负责检查、状态和更强约束的是 bundled scripts、schemas、validators、`.metaloop/` artifacts，以及可选的 hooks / sandbox / wrapper runtime。
+
+## Clean Library 方向
+
+MetaLoop 的库化目标是把可复用协议内核从 legacy full repo CLI/TUI/Codex runtime 中分离出来。`metaloop_core` 是 clean library 边界：它负责 portable `.metaloop/` state、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、id/time helper 和 repair/redesign vocabulary。`metaloop_core` 不能反向依赖 `metaloop.cli`、Rich UI、TUI shell、Codex exec/SDK adapters、worker 或旧多 agent runtime。
+
+当前分层目标：
+
+```text
+metaloop_core     -> reusable protocol/state/verification backend
+skills/metaloop   -> self-contained Codex Skill and bundled kernel
+metaloop CLI/TUI  -> legacy/devtool/CI/fallback full implementation
+```
+
+详细任务计划见 [docs/metaloop_clean_library_mission_plan.md](docs/metaloop_clean_library_mission_plan.md) 和 [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)。skill kernel 仍然保持自包含，不要求目标环境先安装完整 package；仓库内通过 core/skill parity tests 防止 portable kernel 与 `metaloop_core` 的状态和验证语义漂移。
 
 复杂项目中可以使用多个持久 Codex thread agent，但共享真相必须落在 `.metaloop/`：
 

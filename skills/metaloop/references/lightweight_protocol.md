@@ -85,6 +85,8 @@ scripts/metaloop_kernel.py
 
 The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. The full repository CLI can supersede it when available, but the skill must not depend on that external install for its core protocol behavior.
 
+In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
+
 The bundled kernel also writes `.metaloop/execution_report.json` when execution can be represented as one or more workspace commands. Verification should require this report before claiming completion, because a validator pass without a recorded execution can hide skipped or drifted work.
 
 The minimum design gate is intentionally stricter than a plain prompt: intent alone is insufficient. A locked capsule should include design rationale, at least one explicit non-goal, acceptance criteria, and a hard verification path unless the user explicitly accepts manual-only review.
