@@ -155,7 +155,8 @@ class MetaLoopUI:
         self._pause_activity()
         prompt = (
             "Type approve/lock/完成/确认 to lock, or give feedback like "
-            "constraint: ..., out_of_scope: ..., deliverable: ..., acceptance: ..."
+            "constraint: ..., out_of_scope: ..., deliverable: ..., acceptance: ...\n\n"
+            "Press Enter to submit. Paste with your terminal paste shortcut or context menu."
         )
         self.console.print(Panel(prompt, title=f"Design Refinement Round {round_index}", border_style="cyan", box=box.ROUNDED))
         return self._ask("Design review").strip()
@@ -248,12 +249,10 @@ class MetaLoopUI:
 
     def _ask(self, label: str, *, default: str | None = None) -> str:
         self._pause_activity()
-        prompt = Text(label, style="bold cyan")
+        prompt = label
         if default is not None:
-            prompt.append(f" [{default}]", style="dim")
-        prompt.append(": ")
-        self.console.print(prompt, end="")
-        value = input("")
+            prompt = f"{prompt} [{default}]"
+        value = input(f"{prompt}: ")
         if not value.strip() and default is not None:
             return default
         return value

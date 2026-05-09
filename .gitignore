@@ -3,6 +3,7 @@
 .codex
 __pycache__/
 *.py[cod]
+core.*
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

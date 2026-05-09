@@ -36,6 +36,38 @@ def test_option_question_falls_back_to_custom_input(monkeypatch, capsys) -> None
     assert answer == "custom.txt"
 
 
+def test_ask_uses_native_input_prompt(monkeypatch) -> None:
+    ui = MetaLoopUI()
+    prompts = []
+
+    def fake_input(prompt=""):
+        prompts.append(prompt)
+        return "ship it"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    answer = ui._ask("Design review")
+
+    assert answer == "ship it"
+    assert prompts == ["Design review: "]
+
+
+def test_ask_uses_native_input_prompt_with_default(monkeypatch) -> None:
+    ui = MetaLoopUI()
+    prompts = []
+
+    def fake_input(prompt=""):
+        prompts.append(prompt)
+        return ""
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    answer = ui._ask("Choose", default="1")
+
+    assert answer == "1"
+    assert prompts == ["Choose [1]: "]
+
+
 def test_option_selector_lines_wrap_long_answers() -> None:
     ui = MetaLoopUI()
     ui.console.width = 50
