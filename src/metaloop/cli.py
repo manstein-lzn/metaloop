@@ -590,19 +590,25 @@ def _interactive_design_refinement(
                 )
             )
             return mission, review, brainstorm, decisions
-        draft, decision = apply_human_design_feedback(draft, action)
-        decisions.append(decision)
-        mission = CoDesignSession(draft).build_mission()
-        review = reviewer.review(mission)
-        brainstorm = brainstormer.expand(mission, draft, review)
-        process_artifacts = write_design_process_artifacts(
-            mission,
-            review,
-            brainstorm,
-            args.workspace,
-            rounds=rounds,
-            decisions=decisions,
-        )
+        ui.console.out("feedback: received")
+        with _activity(ui, True, "Applying design feedback and rebuilding MissionSpec...") as activity:
+            draft, decision = apply_human_design_feedback(draft, action)
+            decisions.append(decision)
+            mission = CoDesignSession(draft).build_mission()
+            activity.update("Running MissionSpec reviewer on the revised design...")
+            review = reviewer.review(mission)
+            activity.update("Expanding revised design options, risks, and unresolved questions...")
+            brainstorm = brainstormer.expand(mission, draft, review)
+            activity.update("Writing revised Co-Design artifacts...")
+            process_artifacts = write_design_process_artifacts(
+                mission,
+                review,
+                brainstorm,
+                args.workspace,
+                rounds=rounds,
+                decisions=decisions,
+            )
+        ui.console.out("feedback: applied")
         ui.print_design_review(render_design_review_markdown(mission, review, brainstorm, decisions), process_artifacts)
         if (args.strict_review or args.autonomous) and not review.passed:
             ui.print_json_error("MissionSpec review failed after refinement", review_preview(review))

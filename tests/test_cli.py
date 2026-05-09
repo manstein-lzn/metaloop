@@ -442,6 +442,40 @@ def test_cli_design_interactive_deep_question_creates_file_exists(monkeypatch, t
     assert '"validation_type":"file_exists"' in mission_path.read_text(encoding="utf-8").replace(" ", "")
 
 
+def test_cli_design_refinement_shows_feedback_progress(monkeypatch, tmp_path, capsys) -> None:
+    mission_path = tmp_path / "mission.json"
+    answers = iter(["acceptance: final report includes baseline comparison", "approve"])
+
+    monkeypatch.setattr("metaloop.ui.MetaLoopUI._ask_editor", lambda _self, _label: next(answers))
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "1")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    exit_code = main([
+        "design",
+        "--interviewer",
+        "rule",
+        "--brainstormer",
+        "rule",
+        "--intent",
+        "Create report.md documenting the baseline comparison for the local research run",
+        "--deliverable",
+        "report.md",
+        "--file-exists",
+        "report.md",
+        "--output",
+        str(mission_path),
+        "--workspace",
+        str(tmp_path),
+        "--no-deep",
+    ])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "feedback: received" in output
+    assert "feedback: applied" in output
+    assert "final report includes baseline comparison" in mission_path.read_text(encoding="utf-8")
+
+
 def test_cli_design_resume_uses_saved_draft(monkeypatch, tmp_path, capsys) -> None:
     mission_path = tmp_path / "mission.json"
     state_path = tmp_path / "design.session.json"
