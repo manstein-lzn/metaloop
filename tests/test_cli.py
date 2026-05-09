@@ -7,7 +7,7 @@ from metaloop.agents import RuleBasedRoleAgentBackend
 from metaloop.cli import main
 from metaloop.codex_adapter import CodexExecOptions
 from metaloop.capsule import ClosureOutcome, LifecycleState, MissionCapsule
-from metaloop.co_design import CoDesignAnswer, CoDesignBrainstorm, CoDesignInterviewerResult, CoDesignQuestion
+from metaloop.co_design import CoDesignAgentError, CoDesignAnswer, CoDesignBrainstorm, CoDesignInterviewerResult, CoDesignQuestion
 from metaloop.co_design import build_draft_from_options
 from metaloop.design_store import CoDesignCheckpointStore
 from metaloop.goal import RedesignProposal, ReviewRoute, VerificationResult, VerificationStatus
@@ -474,6 +474,54 @@ def test_cli_design_refinement_shows_feedback_progress(monkeypatch, tmp_path, ca
     assert "feedback: received" in output
     assert "feedback: applied" in output
     assert "final report includes baseline comparison" in mission_path.read_text(encoding="utf-8")
+
+
+def test_cli_design_refinement_agent_failure_saves_feedback_and_reports_resume(monkeypatch, tmp_path, capsys) -> None:
+    mission_path = tmp_path / "mission.json"
+    feedback = "constraint: preserve the local best baseline and run three full training attempts"
+    answers = iter([feedback])
+
+    class FailingBrainstormer:
+        def expand(self, mission, _draft, _review):
+            if "three full training attempts" in " ".join(mission.context.get("constraints", [])):
+                raise CoDesignAgentError("codex brainstorm unavailable: no final message")
+            return CoDesignBrainstorm()
+
+    monkeypatch.setattr("metaloop.cli.RuleCoDesignBrainstormer", FailingBrainstormer)
+    monkeypatch.setattr("metaloop.ui.MetaLoopUI._ask_editor", lambda _self, _label: next(answers))
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "1")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    exit_code = main([
+        "design",
+        "--interviewer",
+        "rule",
+        "--brainstormer",
+        "rule",
+        "--intent",
+        "Create report.md documenting the baseline comparison for the local research run",
+        "--deliverable",
+        "report.md",
+        "--file-exists",
+        "report.md",
+        "--output",
+        str(mission_path),
+        "--workspace",
+        str(tmp_path),
+        "--no-deep",
+    ])
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+
+    assert exit_code == 1
+    assert "feedback: saved" in output
+    assert "Co-Design agent failed before the design could be locked" in output
+    assert "metaloop design --resume" in output
+    assert "--brainstormer rule" in output
+    assert not mission_path.exists()
+    checkpoint = CoDesignCheckpointStore(tmp_path / ".metaloop" / "design.session.json").load()
+    assert checkpoint is not None
+    assert any("three full training attempts" in item for item in checkpoint.draft.constraints)
 
 
 def test_cli_design_resume_uses_saved_draft(monkeypatch, tmp_path, capsys) -> None:

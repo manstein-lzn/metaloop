@@ -10,6 +10,7 @@ from pathlib import Path
 from metaloop.agents import CodexRoleAgentBackend
 from metaloop.codex_adapter import map_codex_event_type
 from metaloop.co_design import (
+    CoDesignAgentError,
     CoDesignDecision,
     CoDesignQuestion,
     CoDesignRunner,
@@ -436,6 +437,7 @@ def _design(args: argparse.Namespace) -> int:
             brainstormer,
             decisions,
             design_result.rounds,
+            design_store,
         )
         if not review.passed:
             ui.print_json_error("MissionSpec review failed; refusing to lock invalid Co-Design contract", review_preview(review))
@@ -480,6 +482,15 @@ def _design(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         ui.print_error(f"Co-Design interrupted. Resume with: metaloop design --resume --workspace {shlex.quote(str(args.workspace))}")
         return 130
+    except CoDesignAgentError as exc:
+        ui.print_error(
+            "Co-Design agent failed before the design could be locked. "
+            f"No MissionSpec was written. Saved progress can be resumed with: metaloop design --resume --workspace {shlex.quote(str(args.workspace))}\n\n"
+            f"agent_error: {exc}\n"
+            "If this repeats during brainstorming, retry with: "
+            f"metaloop design --resume --workspace {shlex.quote(str(args.workspace))} --brainstormer rule"
+        )
+        return 1
     except ValueError as exc:
         ui.print_error(str(exc))
         return 1
@@ -575,6 +586,7 @@ def _interactive_design_refinement(
     brainstormer,
     decisions,
     rounds,
+    design_store,
 ):
     if args.no_interactive or args.json or not sys.stdin.isatty():
         return mission, review, brainstorm, decisions
@@ -594,6 +606,8 @@ def _interactive_design_refinement(
         with _activity(ui, True, "Applying design feedback and rebuilding MissionSpec...") as activity:
             draft, decision = apply_human_design_feedback(draft, action)
             decisions.append(decision)
+            design_store.save(draft, rounds)
+            ui.console.out("feedback: saved")
             mission = CoDesignSession(draft).build_mission()
             activity.update("Running MissionSpec reviewer on the revised design...")
             review = reviewer.review(mission)
