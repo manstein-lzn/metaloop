@@ -180,6 +180,8 @@ Use the full `metaloop` CLI only when it is available and the user wants the rep
 
 For repeated attempts, do not merely rerun commands. Apply the Adaptive Goal Loop before the next attempt: summarize the observation, evaluate it against locked criteria, diagnose the likely cause, choose `continue` / `repair` / `redesign` / `pivot` / `stop` / `escalate`, and make the next plan explicitly depend on the evidence from the previous attempt.
 
+After a failed or partial VerificationResult, do not run another attempt until the loop has recorded observable feedback and a control decision: observation, evaluation, diagnosis, decision, and next_plan. In repositories with `metaloop_core`, `ObservationReport` and `DiagnosisReport` may be produced from ExecutionReport plus VerificationResult; in skill-only mode, record the same content through `adaptive record` or `event append`.
+
 ## Dissatisfaction Classification
 
 - `repair`: target and acceptance are still correct; implementation is defective.
@@ -204,6 +206,7 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 - Replacing a locked capsule requires a revision reason and archives the previous capsule.
 - VerificationResult and user acceptance determine completion.
 - Hard validators failing means not complete.
+- Failed or partial verification must feed observation and diagnosis before the next attempt.
 - If a core metric gate fails, say the target failed. Do not present `completed_with_limitations` or artifact production as goal success.
 - Skill instructions do not provide non-bypassable guarantees.
 - Do not build a parallel state system outside `.metaloop/` artifacts.

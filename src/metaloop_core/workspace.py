@@ -41,6 +41,14 @@ class WorkspacePaths:
     def adaptive_loop(self) -> Path:
         return self.metaloop_dir / "adaptive_loop.json"
 
+    @property
+    def observation_report(self) -> Path:
+        return self.metaloop_dir / "observation_report.json"
+
+    @property
+    def diagnosis_report(self) -> Path:
+        return self.metaloop_dir / "diagnosis_report.json"
+
 
 class WorkspaceState:
     """Read-only view over the portable ``.metaloop`` workspace state."""
@@ -71,11 +79,19 @@ class WorkspaceState:
     def adaptive_loop(self) -> dict[str, Any] | None:
         return self.read_json(self.paths.adaptive_loop)
 
+    def observation_report(self) -> dict[str, Any] | None:
+        return self.read_json(self.paths.observation_report)
+
+    def diagnosis_report(self) -> dict[str, Any] | None:
+        return self.read_json(self.paths.diagnosis_report)
+
     def status(self) -> dict[str, Any]:
         capsule = self.mission_capsule()
         execution = self.execution_report()
         verification = self.verification_result()
         adaptive_loop = self.adaptive_loop()
+        observation = self.observation_report()
+        diagnosis = self.diagnosis_report()
         thread_registry = ThreadRegistry(self.root).load()
         events = EventLog(self.root).list()
         return {
@@ -84,6 +100,8 @@ class WorkspaceState:
             "execution": _artifact_state(execution, self.paths.execution_report, status_key="status"),
             "verification": _artifact_state(verification, self.paths.verification_result, status_key="status"),
             "adaptive_loop": _artifact_state(adaptive_loop, self.paths.adaptive_loop, status_key="status"),
+            "observation": _artifact_state(observation, self.paths.observation_report, status_key="status"),
+            "diagnosis": _artifact_state(diagnosis, self.paths.diagnosis_report, status_key="evaluation_status"),
             "threads": {
                 "state": "ready" if thread_registry else "missing",
                 "path": str(self.paths.thread_registry),

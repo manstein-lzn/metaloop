@@ -3,6 +3,8 @@ from __future__ import annotations
 CAPSULE_SCHEMA = "metaloop.lightweight_capsule"
 ADAPTIVE_LOOP_SCHEMA = "metaloop.adaptive_goal_loop"
 ADAPTIVE_ITERATION_SCHEMA = "metaloop.adaptive_goal_iteration"
+OBSERVATION_REPORT_SCHEMA = "metaloop.observation_report"
+DIAGNOSIS_REPORT_SCHEMA = "metaloop.diagnosis_report"
 EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
 EXTENSION_SPEC_SCHEMA = "metaloop.extension_spec"
 VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"

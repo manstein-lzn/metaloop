@@ -12,7 +12,7 @@ Codex Skill -> minimal MetaLoop kernel -> persistent Codex agent thread(s) -> Ad
 
 产品方向：MetaLoop 不再把外部 CLI 编排器作为主智能运行时。Codex agent 保持自然对话、项目理解和长期上下文；MetaLoop skill 和 minimal kernel 负责 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、thread registry 和审计状态。现有 CLI 子命令仍保留为 legacy、脚本、CI、调试和 full repo implementation 路径，但复杂项目的推荐心智是：persistent Codex thread agents 通过 `.metaloop/` artifacts 协作。
 
-MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan`。研究、工程、前端、benchmark、论文复现等任务共享同一闭环；domain extension 只负责定义证据语言、指标、风险和 validators，不在 core 里分裂出一套研究专用流程。
+MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan`。研究、工程、前端、benchmark、论文复现等任务共享同一闭环；domain extension 只负责定义证据语言、指标、风险和 validators，不在 core 里分裂出一套研究专用流程。工程控制论视角下，`ExecutionReport + VerificationResult -> ObservationReport -> DiagnosisReport -> AdaptiveLoopState` 是核心反馈链路。
 
 ## 项目文档
 
@@ -32,6 +32,7 @@ MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan ->
 - [docs/metaloop_clean_library_mission_plan.md](docs/metaloop_clean_library_mission_plan.md)：clean library 第一阶段边界抽取计划。
 - [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)：final clean library 升级计划和最终 VerificationSpec。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环：Goal / Plan / Observe / Evaluate / Diagnose / Decide / Next Plan。
+- [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则：观测、评估、诊断、控制决策和下一步。
 - [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md)：团队内测指南和推广边界。
 - [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md)：可直接复制给 Codex 的一键 skill 安装 prompt。
 - [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md)：Alpha 发布说明。
@@ -42,7 +43,7 @@ MetaLoop 正在被重定位为 Codex 的 skill-first、not prompt-only 协议层
 
 ## Clean Library 方向
 
-MetaLoop 的库化目标是把可复用协议内核从 legacy full repo CLI/TUI/Codex runtime 中分离出来。`metaloop_core` 是 clean library 边界：它负责 portable `.metaloop/` state、Adaptive Goal Loop state、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、id/time helper 和 repair/redesign vocabulary。`metaloop_core` 不能反向依赖 `metaloop.cli`、Rich UI、TUI shell、Codex exec/SDK adapters、worker 或旧多 agent runtime。
+MetaLoop 的库化目标是把可复用协议内核从 legacy full repo CLI/TUI/Codex runtime 中分离出来。`metaloop_core` 是 clean library 边界：它负责 portable `.metaloop/` state、Adaptive Goal Loop state、ObservationReport、DiagnosisReport、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、id/time helper 和 repair/redesign vocabulary。`metaloop_core` 不能反向依赖 `metaloop.cli`、Rich UI、TUI shell、Codex exec/SDK adapters、worker 或旧多 agent runtime。
 
 当前分层目标：
 

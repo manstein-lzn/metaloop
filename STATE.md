@@ -18,10 +18,12 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 2026-05-09 产品方法论进一步收敛为 Adaptive Goal Loop：`Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan`。StateTune/MAPE20 这类开放研究任务不应被做成研究专用分支，而应作为通用目标逼近闭环的高不确定性压力测试。`metaloop_core` 新增 `.metaloop/adaptive_loop.json` 状态和通用决策词汇；domain extension 继续只负责证据语言、指标、风险和 validators。
 
+2026-05-09 engineering cybernetics 方向已沉淀为小型反馈控制链路：保留 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、Adaptive Goal Loop、EventLog、ThreadRegistry 和 self-contained skill kernel；新增最小 ObservationReport / DiagnosisReport，让失败或部分成功先变成可观测反馈和控制决策，再进入下一轮计划。明确不新增重型 scheduler、研究专用系统或新的 CLI/TUI 主产品面。
+
 ## 当前架构决策
 
 - MetaLoop 负责 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、thread registry、证据和审计。
-- `metaloop_core` 是 clean library 边界，承载 portable `.metaloop/` state、Adaptive Goal Loop state、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、verification summary、ids/time helper 和 repair/redesign vocabulary。
+- `metaloop_core` 是 clean library 边界，承载 portable `.metaloop/` state、Adaptive Goal Loop state、ObservationReport、DiagnosisReport、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、verification summary、ids/time helper 和 repair/redesign vocabulary。
 - Codex persistent thread agents 负责探索、需求澄清、设计、写代码、调试、测试和长任务推进。
 - Codex `/goal complete` 或 Codex 自述完成不能等同于 MetaLoop verified completion。
 - MetaLoop 不内建重型调度器，不默认自动启动多个后台 agent。
@@ -135,7 +137,7 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 ```bash
 .venv/bin/pytest -q
-# 271 passed
+# 276 passed
 ```
 
 ## 重要文档
@@ -147,6 +149,7 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 - `docs/metaloop_lightweight_protocol_reframing.md`：轻量协议层和 Codex Skill 纪律边界。
 - `docs/metaloop_dynamic_extension_protocol_upgrade.md`：dynamic ExtensionSpec / VerificationSpec 升级约束。
 - `docs/metaloop_adaptive_goal_loop.md`：通用目标逼近闭环，不把研究任务特化进 core。
+- `docs/metaloop_engineering_cybernetics_principles.md`：工程控制论原则和最小反馈控制架构。
 - `docs/team_internal_preview_guide.md`：团队内测使用说明和推广边界。
 - `docs/codex_install_metaloop_skill.md`：给 Codex 使用的一键安装 prompt。
 - `DEVELOPMENT_PLAN.md`：近期开发计划。
