@@ -14,6 +14,8 @@ Codex Skill -> minimal MetaLoop kernel -> persistent Codex agent thread(s) -> Ad
 
 MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan`。研究、工程、前端、benchmark、论文复现等任务共享同一闭环；domain extension 只负责定义证据语言、指标、风险和 validators，不在 core 里分裂出一套研究专用流程。工程控制论视角下，`ExecutionReport + VerificationResult -> ObservationReport -> DiagnosisReport -> AdaptiveLoopState` 是核心反馈链路。
 
+产品纪律：MetaLoop 是 Prompt-first / code-backed。Prompt、skill、examples 负责智能：理解、诊断、策略、实验设计、反思和 next plan；代码、kernel、validators 和 `.metaloop/` artifacts 负责真相：锁定状态、验证、审计、恢复和跨 agent 共享。不要因为一个推理模式有用就立刻写成框架代码。
+
 ## 项目文档
 
 - [STATE.md](STATE.md)：当前项目状态和交接备注。
@@ -33,6 +35,7 @@ MetaLoop 的通用方法论正在收敛为 Adaptive Goal Loop：`Goal -> Plan ->
 - [docs/metaloop_final_clean_library_plan.md](docs/metaloop_final_clean_library_plan.md)：final clean library 升级计划和最终 VerificationSpec。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环：Goal / Plan / Observe / Evaluate / Diagnose / Decide / Next Plan。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则：观测、评估、诊断、控制决策和下一步。
+- [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律，避免 code-first drift。
 - [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md)：团队内测指南和推广边界。
 - [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md)：可直接复制给 Codex 的一键 skill 安装 prompt。
 - [docs/release/v0.1.0-alpha.md](docs/release/v0.1.0-alpha.md)：Alpha 发布说明。

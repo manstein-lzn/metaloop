@@ -20,9 +20,12 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 2026-05-09 engineering cybernetics 方向已沉淀为小型反馈控制链路：保留 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、Adaptive Goal Loop、EventLog、ThreadRegistry 和 self-contained skill kernel；新增最小 ObservationReport / DiagnosisReport，让失败或部分成功先变成可观测反馈和控制决策，再进入下一轮计划。明确不新增重型 scheduler、研究专用系统或新的 CLI/TUI 主产品面。
 
+2026-05-09 prompt-first 产品纪律已明确：Prompt / skill / examples 负责智能，code / kernel / validators / `.metaloop` artifacts 负责真相。MetaLoop 不应把大模型 agent 的理解、诊断、策略和反思能力过早代码化；只有需要持久化、验证、审计、恢复、跨 agent 共享或机器路由的内容才进入 core/schema。文档记录在 `docs/metaloop_prompt_first_code_backed.md`，skill 随包参考为 `skills/metaloop/references/prompt_first_code_backed.md`。
+
 ## 当前架构决策
 
 - MetaLoop 负责 Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult、thread registry、证据和审计。
+- Prompt-first / code-backed：Codex agent 和 skill prompt 负责智能；`metaloop_core`、kernel、validators 和 `.metaloop/` artifacts 负责持久真相。
 - `metaloop_core` 是 clean library 边界，承载 portable `.metaloop/` state、Adaptive Goal Loop state、ObservationReport、DiagnosisReport、Mission Capsule I/O、ExecutionReport I/O、ExtensionSpec / VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、verification summary、ids/time helper 和 repair/redesign vocabulary。
 - Codex persistent thread agents 负责探索、需求澄清、设计、写代码、调试、测试和长任务推进。
 - Codex `/goal complete` 或 Codex 自述完成不能等同于 MetaLoop verified completion。
@@ -137,7 +140,7 @@ MetaLoop 当前是可用的本地 Alpha，但产品方向已经从“外部 CLI 
 
 ```bash
 .venv/bin/pytest -q
-# 276 passed
+# 277 passed
 ```
 
 ## 重要文档

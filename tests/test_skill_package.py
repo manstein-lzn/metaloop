@@ -15,6 +15,7 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "scripts/metaloop_kernel.py" in skill
     assert "do not assume a separate `metaloop` package is installed" in skill
     assert "MetaLoop is skill-first, not prompt-only." in skill
+    assert "Prompt handles intelligence. Code handles truth." in skill
     assert "Skill handles entry and alignment." in skill
     assert "bundled kernel for state and checks" in skill
     assert "Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints" in skill
@@ -48,6 +49,21 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert ".metaloop/event_log.jsonl" in reference
     assert "Adaptive Goal Loop" in reference
     assert "Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan" in reference
+    assert "Prompt-first for intelligence and code-backed for truth" in reference
+
+
+def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
+    skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
+    reference = (ROOT / "skills" / "metaloop" / "references" / "prompt_first_code_backed.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "references/prompt_first_code_backed.md" in skill
+    assert "Prompt handles intelligence. Code handles truth." in reference
+    assert "Use prompt / skill instructions / examples" in reference
+    assert "Use code / kernel / validators" in reference
+    assert "Prefer examples before framework code" in reference
+    assert "Do not add a new Python module for every useful reasoning pattern." in reference
+    assert "Prompt-first / code-backed" in readme
 
 
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:

@@ -4,6 +4,8 @@ MetaLoop is Codex's task design and stable execution protocol layer.
 
 ## Product Position
 
+MetaLoop is Prompt-first for intelligence and code-backed for truth.
+
 MetaLoop should preserve:
 
 - deep Design
@@ -43,6 +45,8 @@ Full MetaLoop CLI, when installed
 hooks / sandbox / wrapper runtime
   -> stronger constraints when needed
 ```
+
+Use prompts, playbooks, and examples for understanding, diagnosis, strategy, and next-plan decisions. Use bundled scripts, schemas, validators, and `.metaloop/` artifacts for locked state, verification, audit, and recovery. Do not add framework code when a small prompt protocol and durable artifact are enough.
 
 ## Minimal Capsule Truth
 

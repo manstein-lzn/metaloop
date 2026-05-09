@@ -14,12 +14,15 @@ Use this skill as the entry and alignment layer. Use the bundled kernel for stat
 ## Core Rule
 
 ```text
+Prompt handles intelligence. Code handles truth.
 Skill handles entry and alignment.
 MetaLoop CLI/schema/validators handle checks and state.
 Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints when needed.
 ```
 
 MetaLoop is skill-first, not prompt-only.
+
+Use prompts, examples, and Codex reasoning for understanding, diagnosis, strategy, experiment design, and next-plan decisions. Use code and `.metaloop/` artifacts for durable state, locked contracts, verification, audit, and recovery. Do not add framework code when a small prompt protocol plus durable artifact is enough.
 
 ## Current Product Shape
 
@@ -214,4 +217,5 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 ## References
 
 - For the lightweight product direction and skill boundary, read `references/lightweight_protocol.md`.
+- For the prompt-first / code-backed discipline, read `references/prompt_first_code_backed.md`.
 - For current repository implementation details, inspect `README.md`, `STATE.md`, `HANDOFF.md`, and `docs/metaloop_lightweight_protocol_reframing.md` when present.
