@@ -1,8 +1,7 @@
 """Stable MetaLoop protocol core APIs.
 
-This package is intentionally smaller than the full ``metaloop`` package.
-It owns portable state and protocol primitives that can be reused by the
-Codex Skill, future wrappers, and the legacy full-repository CLI.
+This package owns portable state and protocol primitives for the self-contained
+Codex Skill and any future thin wrappers that need the same `.metaloop/` truth.
 """
 
 from metaloop_core.adaptive_loop import AdaptiveIteration, AdaptiveLoopState, append_iteration, decide_next, load_adaptive_loop, new_adaptive_loop, record_iteration, write_adaptive_loop

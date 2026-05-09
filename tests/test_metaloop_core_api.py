@@ -78,14 +78,14 @@ def test_event_log_appends_long_task_events(tmp_path) -> None:
     event = log.append(
         event_type="decision",
         agent="interface",
-        summary="Keep full CLI as legacy/devtool and extract metaloop_core first.",
+        summary="Keep the product skill-only and use metaloop_core for protocol truth.",
         evidence=["docs/metaloop_prompt_first_code_backed.md"],
-        next_action="Implement Phase 1 core API.",
+        next_action="Verify skill/core parity.",
     )
 
     assert event["schema"] == "metaloop.event"
     assert event["type"] == "decision"
-    assert log.list()[0]["summary"].startswith("Keep full CLI")
+    assert log.list()[0]["summary"].startswith("Keep the product skill-only")
 
 
 def test_verification_summary_counts_blockers(tmp_path) -> None:

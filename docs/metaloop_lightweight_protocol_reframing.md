@@ -199,7 +199,7 @@ complete  验证通过，等待或完成用户验收
 - `.metaloop/` 结构化 artifacts。
 - resume / repair / redesign。
 - 任务状态文档和 handoff。
-- Codex SDK UserAgent 作为长期交互入口。
+- Codex 自身的长期对话作为用户交互入口。
 - Codex agent 不直接修改 locked contract 的边界。
 
 这些能力代表 MetaLoop 的真实价值。
@@ -325,7 +325,7 @@ $metaloop skill
 scripts / schemas / templates
   -> 用确定性代码检查 Mission Capsule、VerificationResult、证据文件和状态流转
 
-MetaLoop CLI / helper
+skill-bundled kernel / schemas / validators
   -> 生成、锁定、验证、恢复、修复、复盘结构化 artifacts
 
 Codex 配置、hooks、sandbox、wrapper runtime
@@ -338,7 +338,7 @@ Codex 配置、hooks、sandbox、wrapper runtime
 - Codex 可以通过 Skill 快速理解 MetaLoop 的纪律。
 - 重资产 reference 可以沉淀设计哲学、任务模板和验收范式。
 - 脚本和 schema 可以把关键边界变成可执行检查。
-- 真正需要硬约束的地方交给 CLI、hooks、sandbox 或外层 runtime。
+- 真正需要硬约束的地方交给 hooks、sandbox 或非交互 wrapper runtime。
 
 这也给 MetaLoop 的工程边界一个清晰结论：
 
@@ -352,9 +352,9 @@ Codex 配置、hooks、sandbox、wrapper runtime
 
 ```text
 轻量 $metaloop skill
-  + 最小 MetaLoop CLI/helper
+  + skill-bundled kernel/helper
   + Mission Capsule / VerificationResult schema
-  + 少量必要 hooks
+  + 必要时才加入 hooks / sandbox / 非交互 wrapper
   + Obsidian/Codexarium 可追溯知识沉淀
 ```
 

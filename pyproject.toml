@@ -5,30 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "metaloop"
 version = "0.1.0"
-description = "A local-first autonomous closed-loop agent kernel."
+description = "Skill-only MetaLoop protocol core for Codex tasks."
 requires-python = ">=3.12"
-dependencies = [
-    "prompt_toolkit>=3.0",
-    "pydantic>=2.0",
-    "rich>=13.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
 ]
-graph = [
-    "langgraph>=0.2",
-]
-
-[project.scripts]
-metaloop = "metaloop.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-metaloop = ["*.mjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

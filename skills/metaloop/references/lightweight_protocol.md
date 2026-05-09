@@ -14,7 +14,6 @@ MetaLoop should preserve:
 - durable `.metaloop/` artifacts
 - independent VerificationResult
 - repair/redesign/resume decisions
-- Codex SDK UserAgent as the human-facing entry
 - a bundled lightweight kernel for one-click skill deployment
 - persistent Codex thread agents when a project needs separate long-lived responsibilities
 
@@ -38,9 +37,6 @@ $metaloop skill
 
 Bundled scripts / schemas / validators
   -> deterministic checks, artifact writes, status, verification
-
-Full MetaLoop CLI, when installed
-  -> richer design/run/verify/resume implementation
 
 hooks / sandbox / wrapper runtime
   -> stronger constraints when needed
@@ -110,7 +106,7 @@ references/lightweight_protocol.md
 scripts/metaloop_kernel.py
 ```
 
-The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. The full repository CLI can supersede it when available, but the skill must not depend on that external install for its core protocol behavior.
+The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. Do not assume a repository-level command is installed in the target project.
 
 In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Adaptive Goal Loop state, Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
 
@@ -120,7 +116,7 @@ The minimum design gate is intentionally stricter than a plain prompt: intent al
 
 ## Persistent Agent Threads
 
-For complex projects, MetaLoop should not make a Python CLI pretend to be a better Codex runtime. Codex agents should keep the natural conversation and project understanding. MetaLoop should provide protocol state.
+For complex projects, MetaLoop should not make an external local runtime pretend to be a better Codex conversation. Codex agents should keep the natural conversation and project understanding. MetaLoop should provide protocol state.
 
 The recommended shape is:
 

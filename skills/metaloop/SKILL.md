@@ -16,7 +16,7 @@ Use this skill as the entry and alignment layer. Use the bundled kernel for stat
 ```text
 Prompt handles intelligence. Code handles truth.
 Skill handles entry and alignment.
-MetaLoop CLI/schema/validators handle checks and state.
+Bundled kernel / schema / validators handle checks and state.
 Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints when needed.
 ```
 
@@ -158,7 +158,7 @@ python3 "$KERNEL" --workspace . run \
   --evidence "<evidence note>"
 ```
 
-When Codex itself performs the implementation, keep work aligned to `.metaloop/mission_capsule.json`, then produce an ExecutionReport through the full MetaLoop CLI when available or a command-based wrapper step when possible.
+When Codex itself performs the implementation, keep work aligned to `.metaloop/mission_capsule.json`, then produce an ExecutionReport through the bundled kernel's command wrapper when possible. If the implementation cannot be represented as a single command wrapper, write equivalent evidence into `.metaloop/` and still run verification against the locked spec.
 
 4. Judge completion through verification, not worker self-report:
 
@@ -179,7 +179,7 @@ python3 "$KERNEL" --workspace . mark --status repair_required --reason "Implemen
 python3 "$KERNEL" --workspace . mark --status redesign_required --reason "Contract boundary or acceptance must change."
 ```
 
-Use the full `metaloop` CLI only when it is available and the user wants the repository implementation. The bundled kernel is the skill's portable minimum.
+Do not assume a repository-level MetaLoop command exists. The bundled kernel is the skill's portable backend.
 
 For repeated attempts, do not merely rerun commands. Apply the Adaptive Goal Loop before the next attempt: summarize the observation, evaluate it against locked criteria, diagnose the likely cause, choose `continue` / `repair` / `redesign` / `pivot` / `stop` / `escalate`, and make the next plan explicitly depend on the evidence from the previous attempt.
 
