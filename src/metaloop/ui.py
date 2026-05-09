@@ -162,7 +162,7 @@ class MetaLoopUI:
         self._pause_activity()
         prompt = (
             "Type approve/lock/完成/确认 to lock, or write feedback for another design round.\n\n"
-            "Enter submits. Alt+Enter inserts a newline. Paste works as normal."
+            "Enter submits. Esc then Enter inserts a newline. Paste works as normal."
         )
         self.console.print(Panel(prompt, title=f"Design Refinement Round {round_index}", border_style="cyan", box=box.ROUNDED))
         while True:
@@ -278,7 +278,7 @@ class MetaLoopUI:
             multiline=True,
             key_bindings=_submit_enter_key_bindings(),
             prompt_continuation="... ",
-            bottom_toolbar=HTML("<style bg='ansiblack' fg='ansiwhite'> Enter submits | Alt+Enter inserts newline | Ctrl+C cancels </style>"),
+            bottom_toolbar=HTML("<style bg='ansiblack' fg='ansiwhite'> Enter submits | Esc then Enter inserts newline | Ctrl+C cancels </style>"),
         )
 
     def _get_prompt_session(self) -> PromptSession:
@@ -767,11 +767,15 @@ def _submit_enter_key_bindings() -> KeyBindings:
         return _EDITOR_KEY_BINDINGS
     bindings = KeyBindings()
 
+    @bindings.add("enter", eager=True)
     @bindings.add("c-m", eager=True)
+    @bindings.add("c-j", eager=True)
     def _(event) -> None:
         event.app.exit(result=event.app.current_buffer.text)
 
+    @bindings.add("escape", "enter", eager=True)
     @bindings.add("escape", "c-m", eager=True)
+    @bindings.add("escape", "c-j", eager=True)
     def _(event) -> None:
         event.current_buffer.insert_text("\n")
 

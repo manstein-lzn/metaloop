@@ -83,7 +83,7 @@ def test_design_review_uses_editor_prompt(monkeypatch, capsys) -> None:
 
     assert answer == "需要深入复盘历史实验并扩大时间预算。"
     assert prompts == ["Design review"]
-    assert "Alt+Enter inserts a newline" in output
+    assert "Esc then Enter inserts a newline" in output
     assert "Paste works as normal" in output
 
 
@@ -100,16 +100,17 @@ def test_design_review_reprompts_on_empty_editor_input(monkeypatch, capsys) -> N
     assert "No input submitted" in output
 
 
-def test_editor_prompt_enter_submits_and_alt_enter_inserts_newline() -> None:
+def test_editor_prompt_enter_variants_submit_and_escape_enter_inserts_newline() -> None:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.input.defaults import create_pipe_input
     from prompt_toolkit.output import DummyOutput
 
-    with create_pipe_input() as pipe:
-        session = PromptSession(input=pipe, output=DummyOutput())
-        pipe.send_text("hello\r")
-        result = session.prompt(multiline=True, key_bindings=_submit_enter_key_bindings())
-    assert result == "hello"
+    for enter_sequence in ("\r", "\n"):
+        with create_pipe_input() as pipe:
+            session = PromptSession(input=pipe, output=DummyOutput())
+            pipe.send_text(f"hello{enter_sequence}")
+            result = session.prompt(multiline=True, key_bindings=_submit_enter_key_bindings())
+        assert result == "hello"
 
     with create_pipe_input() as pipe:
         session = PromptSession(input=pipe, output=DummyOutput())
