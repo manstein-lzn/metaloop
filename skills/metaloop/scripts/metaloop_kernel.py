@@ -21,6 +21,11 @@ VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
 VERIFICATION_SCHEMA = "metaloop.lightweight_verification_result"
 THREAD_REGISTRY_SCHEMA = "metaloop.thread_registry"
 EVENT_SCHEMA = "metaloop.event"
+JOB_ENVELOPE_SCHEMA = "metaloop.job_envelope"
+GLOBAL_BLACKBOARD_SCHEMA = "metaloop.global_blackboard"
+TICK_RESULT_SCHEMA = "metaloop.tick_result"
+DISPATCH_MAP_SCHEMA = "metaloop.dispatch_map"
+RELAY_RESULT_SCHEMA = "metaloop.relay_result"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
@@ -29,6 +34,17 @@ EVALUATION_STATUSES = {"satisfied", "not_satisfied", "partial", "unknown", "bloc
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
 CANONICAL_THREAD_TYPES = {"interface", "design", "worker", "reviewer", "verifier"}
 EVENT_TYPES = {"observation", "decision", "action", "blocker", "handoff", "verification", "repair", "redesign", "note"}
+ROUTE_ACTIONS = {"dispatch", "loop_back", "route_to", "escalate", "suspend", "wait", "diagnose", "error"}
+ROUTABLE_VERIFICATION_STATUSES = {
+    "completed_verified",
+    "execution_incomplete",
+    "failed",
+    "human_acceptance_required",
+    "invalid_capsule",
+    "missing_execution_report",
+    "missing_verification_plan",
+    "unsupported_verification_spec",
+}
 KNOWN_EXECUTABLE_VALIDATORS = {
     "artifact_hash",
     "command",
@@ -169,6 +185,14 @@ def main(argv: list[str] | None = None) -> int:
     list_event_parser.add_argument("--limit", type=int, default=10, help="Number of recent events to show.")
     list_event_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
+    tick_parser = subparsers.add_parser("tick", help="Apply one local routable-work-unit effect step and exit.")
+    tick_parser.add_argument("--envelope", default="job_envelope.json", help="Path to job_envelope.json, relative to workspace by default.")
+    tick_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    relay_parser = subparsers.add_parser("relay", help="Deliver local outbox records using a static dispatch map and exit.")
+    relay_parser.add_argument("--dispatch-map", required=True, help="Path to dispatch_map.json, relative to workspace by default.")
+    relay_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
     args = parser.parse_args(argv)
     workspace = Path(args.workspace).expanduser().resolve()
     if args.command == "status":
@@ -187,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
         return _threads(workspace, args)
     if args.command == "event":
         return _event(workspace, args)
+    if args.command == "tick":
+        return _tick(workspace, args)
+    if args.command == "relay":
+        return _relay(workspace, args)
     return 2
 
 
@@ -536,6 +564,71 @@ def _event_list(workspace: Path, *, limit: int, as_json: bool) -> int:
         agent = event.get("agent") or event.get("thread_role") or "-"
         print(f"- {event.get('created_at')} {event.get('type')} agent={agent}: {event.get('summary')}")
     return 0
+
+
+def _tick(workspace: Path, args: argparse.Namespace) -> int:
+    envelope_path = _resolve_workspace_path(workspace, args.envelope)
+    envelope = _read_json(envelope_path)
+    route = _route_workspace(workspace, envelope_path)
+    effects = _apply_tick_effects(workspace, envelope if isinstance(envelope, dict) else {}, route)
+    result = {
+        "schema": TICK_RESULT_SCHEMA,
+        "version": "1.0",
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "envelope_path": str(envelope_path),
+        "route": route,
+        "effects": effects,
+    }
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    (_metaloop_dir(workspace) / "tick_result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    _append_tick_event(workspace, route, effects)
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"tick: {route.get('action')}")
+        print(f"reason: {route.get('reason') or '-'}")
+        print(f"result: {_metaloop_dir(workspace) / 'tick_result.json'}")
+    return 0 if route.get("action") not in {"error"} else 1
+
+
+def _relay(workspace: Path, args: argparse.Namespace) -> int:
+    dispatch_map_path = _resolve_workspace_path(workspace, args.dispatch_map)
+    dispatch_map = _read_json(dispatch_map_path)
+    errors = _validate_dispatch_map(dispatch_map)
+    outbox_items = _load_outbox_items(workspace)
+    result = {
+        "schema": RELAY_RESULT_SCHEMA,
+        "version": "1.0",
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "dispatch_map_path": str(dispatch_map_path),
+        "dispatch_map_errors": errors,
+        "counts": {"scanned": len(outbox_items), "delivered": 0, "failed": 0, "needs_design": 0, "skipped": 0},
+        "deliveries": [],
+    }
+    if errors:
+        result["status"] = "invalid_dispatch_map"
+    else:
+        routes = dispatch_map.get("routes", []) if isinstance(dispatch_map, dict) else []
+        for item in outbox_items:
+            delivery = _relay_item(workspace, dispatch_map_path.parent, item, routes)
+            result["deliveries"].append(delivery)
+            status = delivery.get("status")
+            if status in result["counts"]:
+                result["counts"][status] += 1
+        result["status"] = _relay_status(result["counts"])
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    (_metaloop_dir(workspace) / "relay_result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"relay: {result['status']}")
+        print(f"delivered: {result['counts']['delivered']}")
+        print(f"needs_design: {result['counts']['needs_design']}")
+        print(f"failed: {result['counts']['failed']}")
+        print(f"result: {_metaloop_dir(workspace) / 'relay_result.json'}")
+    return 0 if result["status"] in {"completed", "idle"} else 1
 
 
 def _design(workspace: Path, args: argparse.Namespace) -> int:
@@ -1775,6 +1868,387 @@ def _thread_id_for_role(workspace: Path, role: str) -> str:
         return ""
     thread_id = agent.get("thread_id")
     return thread_id if isinstance(thread_id, str) else ""
+
+
+def _resolve_workspace_path(workspace: Path, value: str) -> Path:
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (workspace / path).resolve()
+
+
+def _route_workspace(workspace: Path, envelope_path: Path) -> dict[str, Any]:
+    envelope = _read_json(envelope_path)
+    if not isinstance(envelope, dict):
+        return {"action": "error", "reason": "Job envelope is missing or invalid JSON."}
+    verification = _read_json(_metaloop_dir(workspace) / "verification_result.json")
+    adaptive_loop = _load_adaptive_loop(workspace)
+    return _route_next_hop(envelope, verification, adaptive_loop)
+
+
+def _route_next_hop(envelope: dict[str, Any], verification: dict[str, Any] | None, adaptive_loop: dict[str, Any] | None) -> dict[str, Any]:
+    envelope_errors = _validate_job_envelope(envelope)
+    if envelope_errors:
+        return {"action": "error", "reason": "Invalid job envelope.", "errors": envelope_errors}
+    if verification is None:
+        return {"action": "wait", "reason": "VerificationResult is not available."}
+    status = str(verification.get("status") or "")
+    decision = _latest_adaptive_decision(adaptive_loop)
+    policy = envelope["contract"]["handoff_policy"]
+    base = {"verification_status": status, "adaptive_decision": decision}
+    if status not in ROUTABLE_VERIFICATION_STATUSES:
+        return {**base, "action": "error", "reason": f"Unknown verification status: {status}"}
+    if status == "completed_verified":
+        return {**base, **_policy_action(policy, "on_success", "Completed verified; dispatching according to policy.")}
+    if status == "human_acceptance_required":
+        return {**base, **_policy_action(policy, "on_human_acceptance", "Human acceptance is required.")}
+    if status in {"missing_execution_report", "execution_incomplete"}:
+        return {**base, "action": "wait", "reason": "Execution has not produced a completed report yet."}
+    if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
+        return {**base, **_policy_action(policy, "on_contract_defect", "Contract or verification spec must be redesigned.")}
+    if decision == "escalate":
+        return {**base, **_policy_action(policy, "on_blocked", "Adaptive loop escalated the node.")}
+    if status == "failed" and decision == "repair":
+        retry_count = envelope.get("retry_count") if isinstance(envelope.get("retry_count"), int) else 0
+        max_retries = policy.get("on_repair", {}).get("max_retries")
+        max_retries = max_retries if isinstance(max_retries, int) and max_retries >= 0 else 0
+        if retry_count >= max_retries:
+            return {**base, **_policy_action(policy, "on_blocked", "Repair retry limit reached.")}
+        return {**base, **_policy_action(policy, "on_repair", "Verification failed and the node diagnosed a repair path."), "retry_count_increment": True}
+    if status == "failed" and decision in {"redesign", "pivot"}:
+        return {**base, **_policy_action(policy, "on_redesign", "Verification failed and the node requires redesign or pivot.")}
+    if status == "failed":
+        return {**base, "action": "diagnose", "reason": "Verification failed; record adaptive diagnosis before routing."}
+    return {**base, "action": "error", "reason": "Unhandled route state."}
+
+
+def _apply_tick_effects(workspace: Path, envelope: dict[str, Any], route: dict[str, Any]) -> list[dict[str, Any]]:
+    action = str(route.get("action") or "")
+    if action == "dispatch":
+        target = _route_target(route)
+        if not target:
+            return [_write_tick_marker(workspace, "dispatch_missing_target.json", envelope, route)]
+        return [_write_tick_outbox(workspace, target, envelope, route)]
+    if action == "loop_back":
+        _update_capsule_status(workspace, "repair_required", str(route.get("reason") or "Tick requested repair loop-back."))
+        return [_write_tick_marker(workspace, "loop_back_request.json", envelope, route)]
+    if action == "route_to":
+        _update_capsule_status(workspace, "redesign_required", str(route.get("reason") or "Tick requested redesign or handoff."))
+        return [_write_tick_marker(workspace, "route_to_request.json", envelope, route)]
+    if action == "escalate":
+        _update_capsule_status(workspace, "blocked", str(route.get("reason") or "Tick escalated this node."))
+        return [_write_tick_marker(workspace, "blocked.json", envelope, route)]
+    if action == "suspend":
+        return [_write_tick_marker(workspace, "suspended.json", envelope, route)]
+    if action in {"wait", "diagnose", "error"}:
+        return [_write_tick_marker(workspace, f"{action}.json", envelope, route)]
+    return [_write_tick_marker(workspace, "unknown_route.json", envelope, route)]
+
+
+def _write_tick_outbox(workspace: Path, target: str, envelope: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
+    safe_target = re.sub(r"[^A-Za-z0-9_.-]+", "_", target).strip("._-") or "target"
+    path = _metaloop_dir(workspace) / "outbox" / f"{safe_target}.json"
+    payload = {
+        "created_at": _now(),
+        "target": target,
+        "source_job_id": envelope.get("job_id", ""),
+        "route": route,
+        "source_envelope": {
+            "job_id": envelope.get("job_id", ""),
+            "assigned_role": envelope.get("assigned_role", ""),
+            "envelope_hash": envelope.get("envelope_hash", ""),
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"type": "outbox_written", "target": target, "path": str(path)}
+
+
+def _write_tick_marker(workspace: Path, filename: str, envelope: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
+    path = _metaloop_dir(workspace) / filename
+    payload = {"created_at": _now(), "source_job_id": envelope.get("job_id", ""), "route": route}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"type": "marker_written", "path": str(path)}
+
+
+def _append_tick_event(workspace: Path, route: dict[str, Any], effects: list[dict[str, Any]]) -> None:
+    action = str(route.get("action") or "error")
+    event_type = {
+        "dispatch": "handoff",
+        "loop_back": "repair",
+        "route_to": "redesign",
+        "escalate": "blocker",
+        "suspend": "decision",
+        "diagnose": "observation",
+        "wait": "note",
+        "error": "blocker",
+    }.get(action, "note")
+    event = {
+        "schema": EVENT_SCHEMA,
+        "version": "1.0",
+        "event_id": _new_id("event"),
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "capsule_id": _current_capsule_id(workspace),
+        "type": event_type,
+        "agent": "tick",
+        "thread_role": "",
+        "thread_id": "",
+        "summary": f"Tick action {action}: {route.get('reason') or 'no reason'}",
+        "evidence": [str(effect.get("path")) for effect in effects if effect.get("path")],
+        "decision": action,
+        "next_action": str(_route_target(route) or ""),
+    }
+    _append_event(workspace, event)
+
+
+def _load_outbox_items(workspace: Path) -> list[dict[str, Any]]:
+    outbox_dir = _metaloop_dir(workspace) / "outbox"
+    if not outbox_dir.exists():
+        return []
+    items = []
+    for path in sorted(outbox_dir.glob("*.json")):
+        payload = _read_json(path)
+        if isinstance(payload, dict):
+            payload["__path__"] = str(path)
+            items.append(payload)
+    return items
+
+
+def _relay_item(workspace: Path, dispatch_root: Path, item: dict[str, Any], routes: list[dict[str, Any]]) -> dict[str, Any]:
+    target = str(item.get("target") or "")
+    source_job_id = str(item.get("source_job_id") or "")
+    outbox_path_value = str(item.get("__path__") or "")
+    base = {"delivery_id": _new_id("delivery"), "created_at": _now(), "source_job_id": source_job_id, "target": target, "outbox_path": outbox_path_value}
+    if not target:
+        return {**base, "status": "failed", "reason": "Outbox item is missing target."}
+    if item.get("delivery_status") == "delivered":
+        return {**base, "status": "skipped", "reason": "Outbox item was already delivered."}
+    route = _dispatch_route_for_target(routes, target)
+    if route is None:
+        return {**base, "status": "needs_design", "reason": f"No dispatch route found for target {target}."}
+    template_path = _resolve_relative(dispatch_root, route.get("envelope_template"))
+    if template_path is None:
+        return {**base, "status": "needs_design", "reason": f"No envelope template configured for target {target}."}
+    template = _read_json(template_path)
+    if not isinstance(template, dict):
+        return {**base, "status": "failed", "reason": f"Envelope template is missing or invalid: {template_path}."}
+    envelope, envelope_errors = _build_downstream_envelope(template, item, route, dispatch_root, workspace)
+    if envelope_errors:
+        return {**base, "status": "failed", "reason": "Invalid downstream envelope.", "errors": envelope_errors}
+    target_workspace = _resolve_target_workspace(workspace, route.get("workspace"))
+    if target_workspace is None:
+        return {**base, "status": "failed", "reason": f"Invalid target workspace for target {target}."}
+    target_job_path = target_workspace / "job_envelope.json"
+    inbox_path = target_workspace / ".metaloop" / "inbox" / f"{source_job_id or target}.json"
+    delivery_record_path = _metaloop_dir(workspace) / "relay" / f"{source_job_id or target}_{target}.json"
+    target_workspace.mkdir(parents=True, exist_ok=True)
+    target_job_path.write_text(json.dumps(envelope, indent=2, ensure_ascii=False), encoding="utf-8")
+    inbox_path.parent.mkdir(parents=True, exist_ok=True)
+    inbox_path.write_text(
+        json.dumps(
+            {
+                "created_at": _now(),
+                "delivery_id": base["delivery_id"],
+                "source_job_id": source_job_id,
+                "target": target,
+                "source_outbox_path": outbox_path_value,
+                "target_job_envelope_path": str(target_job_path),
+                "envelope_hash": envelope.get("envelope_hash", ""),
+                "route": item.get("route", {}),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    delivery = {**base, "status": "delivered", "target_job_envelope_path": str(target_job_path), "inbox_path": str(inbox_path), "delivery_record_path": str(delivery_record_path), "envelope_hash": envelope.get("envelope_hash", "")}
+    delivery_record_path.parent.mkdir(parents=True, exist_ok=True)
+    delivery_record_path.write_text(json.dumps(delivery, indent=2, ensure_ascii=False), encoding="utf-8")
+    if outbox_path_value:
+        outbox_path = Path(outbox_path_value)
+        updated_item = dict(item)
+        updated_item.pop("__path__", None)
+        updated_item["delivery_status"] = "delivered"
+        updated_item["delivered_at"] = _now()
+        updated_item["delivery_id"] = base["delivery_id"]
+        updated_item["delivery_path"] = str(delivery_record_path)
+        updated_item["target_job_envelope_path"] = str(target_job_path)
+        outbox_path.write_text(json.dumps(updated_item, indent=2, ensure_ascii=False), encoding="utf-8")
+    return delivery
+
+
+def _build_downstream_envelope(template: dict[str, Any], item: dict[str, Any], route: dict[str, Any], dispatch_root: Path, source_workspace: Path) -> tuple[dict[str, Any], list[str]]:
+    envelope = json.loads(json.dumps(template))
+    source_envelope = item.get("source_envelope") if isinstance(item.get("source_envelope"), dict) else {}
+    source_job_id = str(item.get("source_job_id") or "")
+    envelope["schema"] = envelope.get("schema") or JOB_ENVELOPE_SCHEMA
+    envelope["version"] = str(envelope.get("version") or "1.0")
+    envelope["job_id"] = str(envelope.get("job_id") or _new_id("job"))
+    envelope["parent_job_id"] = source_job_id or envelope.get("parent_job_id")
+    envelope["created_at"] = _now()
+    envelope["assigned_role"] = str(route.get("role") or route.get("target") or envelope.get("assigned_role") or "")
+    envelope["attempt"] = _coerce_nonnegative_int(envelope.get("attempt"), default=1, minimum=1)
+    envelope["retry_count"] = _coerce_nonnegative_int(envelope.get("retry_count"), default=0, minimum=0)
+    envelope["policy_version"] = str(envelope.get("policy_version") or "1.0")
+    envelope.setdefault("intent", {})
+    envelope.setdefault("payload", {})
+    envelope.setdefault("contract", {})
+    if not isinstance(envelope["intent"], dict) or not isinstance(envelope["payload"], dict) or not isinstance(envelope["contract"], dict):
+        return envelope, ["intent, payload, and contract must be objects"]
+    blackboard_path = _resolve_relative(dispatch_root, route.get("blackboard_path"))
+    if blackboard_path is not None:
+        if not blackboard_path.exists():
+            return envelope, [f"blackboard_path not found: {route.get('blackboard_path')}"]
+        envelope["intent"]["global_blackboard_ref"] = str(route.get("blackboard_path"))
+        envelope["intent"]["blackboard_hash"] = _sha256_file(blackboard_path)
+    envelope["upstream"] = {
+        "source_job_id": source_job_id,
+        "source_workspace": str(source_workspace),
+        "source_outbox_target": str(item.get("target") or ""),
+        "source_envelope_hash": str(source_envelope.get("envelope_hash") or ""),
+    }
+    envelope["envelope_hash"] = _job_envelope_hash(envelope)
+    return envelope, _validate_job_envelope(envelope)
+
+
+def _validate_dispatch_map(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["dispatch_map must be a JSON object"]
+    errors = []
+    if payload.get("schema") != DISPATCH_MAP_SCHEMA:
+        errors.append(f"schema must be {DISPATCH_MAP_SCHEMA}")
+    if not isinstance(payload.get("version"), str) or not payload.get("version"):
+        errors.append("version must be a non-empty string")
+    routes = payload.get("routes")
+    if not isinstance(routes, list):
+        errors.append("routes must be a list")
+        return errors
+    for index, route in enumerate(routes):
+        if not isinstance(route, dict):
+            errors.append(f"routes[{index}] must be an object")
+            continue
+        for key in ["target", "workspace", "role"]:
+            if not isinstance(route.get(key), str) or not route.get(key):
+                errors.append(f"routes[{index}].{key} must be a non-empty string")
+    return errors
+
+
+def _validate_job_envelope(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["job_envelope must be a JSON object"]
+    errors = []
+    if payload.get("schema") != JOB_ENVELOPE_SCHEMA:
+        errors.append(f"schema must be {JOB_ENVELOPE_SCHEMA}")
+    for key in ["version", "job_id", "created_at", "assigned_role", "policy_version", "envelope_hash"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    if not isinstance(payload.get("attempt"), int) or payload.get("attempt", 0) < 1:
+        errors.append("attempt must be at least 1")
+    if not isinstance(payload.get("retry_count"), int) or payload.get("retry_count", -1) < 0:
+        errors.append("retry_count must be a non-negative integer")
+    intent = payload.get("intent")
+    if not isinstance(intent, dict):
+        errors.append("intent must be an object")
+    else:
+        for key in ["commander_intent", "global_blackboard_ref", "blackboard_hash"]:
+            if not isinstance(intent.get(key), str) or not intent.get(key):
+                errors.append(f"intent.{key} must be a non-empty string")
+    contract = payload.get("contract")
+    if not isinstance(contract, dict):
+        errors.append("contract must be an object")
+    else:
+        expected_outputs = contract.get("expected_outputs")
+        if not isinstance(expected_outputs, list) or not expected_outputs:
+            errors.append("contract.expected_outputs must be a non-empty list")
+        policy = contract.get("handoff_policy")
+        if not isinstance(policy, dict):
+            errors.append("contract.handoff_policy must be an object")
+        else:
+            for key in ["on_success", "on_repair", "on_redesign", "on_blocked", "on_human_acceptance", "on_contract_defect"]:
+                if not isinstance(policy.get(key), dict):
+                    errors.append(f"contract.handoff_policy.{key} must be an object")
+    if isinstance(payload.get("envelope_hash"), str) and payload.get("envelope_hash") != _job_envelope_hash(payload):
+        errors.append("envelope_hash does not match envelope content")
+    return errors
+
+
+def _job_envelope_hash(envelope: dict[str, Any]) -> str:
+    return _hash_object(envelope, "envelope_hash")
+
+
+def _latest_adaptive_decision(state: dict[str, Any] | None) -> str:
+    if not isinstance(state, dict) or not isinstance(state.get("iterations"), list) or not state["iterations"]:
+        return ""
+    latest = state["iterations"][-1]
+    if not isinstance(latest, dict):
+        return ""
+    decision = latest.get("decision")
+    return decision if isinstance(decision, str) and decision in ADAPTIVE_DECISIONS else ""
+
+
+def _policy_action(policy: dict[str, Any], key: str, reason: str) -> dict[str, Any]:
+    item = policy.get(key, {})
+    action = item.get("action")
+    result = {"action": action if action in ROUTE_ACTIONS else "error", "reason": reason}
+    for target_key in ["target", "target_role", "next_role", "notify"]:
+        if isinstance(item.get(target_key), str) and item[target_key]:
+            result[target_key] = item[target_key]
+    if isinstance(item.get("max_retries"), int):
+        result["max_retries"] = item["max_retries"]
+    return result
+
+
+def _route_target(route: dict[str, Any]) -> str:
+    for key in ["target", "target_role", "next_role", "notify"]:
+        value = route.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _dispatch_route_for_target(routes: list[dict[str, Any]], target: str) -> dict[str, Any] | None:
+    for route in routes:
+        if isinstance(route, dict) and str(route.get("target") or "") == target:
+            return route
+    return None
+
+
+def _resolve_relative(base: Path, value: Any) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (base / path).resolve()
+
+
+def _resolve_target_workspace(workspace: Path, value: Any) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (workspace / path).resolve()
+
+
+def _sha256_file(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _coerce_nonnegative_int(value: Any, *, default: int, minimum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number >= minimum else default
+
+
+def _relay_status(counts: dict[str, int]) -> str:
+    if counts.get("failed", 0) > 0:
+        return "partial_failed"
+    if counts.get("needs_design", 0) > 0 and counts.get("delivered", 0) == 0:
+        return "needs_design"
+    if counts.get("delivered", 0) > 0 and counts.get("needs_design", 0) == 0:
+        return "completed"
+    if counts.get("delivered", 0) > 0:
+        return "partial"
+    return "idle"
 
 
 def _read_json(path: Path) -> Any:

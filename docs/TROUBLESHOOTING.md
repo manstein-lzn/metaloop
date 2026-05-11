@@ -56,6 +56,25 @@ python3 "$KERNEL" --workspace . event append \
 
 For repeated attempts, use the adaptive loop: observe, evaluate, diagnose, decide, then plan the next attempt.
 
+## Handoff Does Not Move Downstream
+
+For routable work units, `tick` and `relay` are explicit one-shot operations:
+
+```bash
+python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
+python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
+```
+
+Common causes:
+
+- `job_envelope.json` is missing or has a stale `envelope_hash`.
+- `.metaloop/verification_result.json` is missing, failed without an adaptive decision, or requires human acceptance.
+- `.metaloop/outbox/<target>.json` was written, but `dispatch_map.json` lacks that target.
+- the dispatch route has no explicit envelope template, so relay returns `needs_design`.
+- the target workspace path is wrong.
+
+Relay must not invent downstream mission content. Add or revise the target project's dispatch map and envelope template, then rerun relay.
+
 ## Tests
 
 ```bash

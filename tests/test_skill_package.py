@@ -1,10 +1,18 @@
 from pathlib import Path
 import json
+import hashlib
 import subprocess
 import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _hashed_envelope(envelope: dict) -> dict:
+    payload = dict(envelope)
+    payload.pop("envelope_hash", None)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return {**envelope, "envelope_hash": "sha256:" + hashlib.sha256(encoded).hexdigest()}
 
 
 def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
@@ -24,9 +32,18 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "ExtensionSpec" in skill
     assert "mode" in skill
     assert "severity" in skill
+    assert "The user should not have to know MetaLoop's internal protocol." in skill
+    assert "Codex owns the MetaLoop workflow." in skill
+    assert "Do not require the user to prompt for Mission Capsules" in skill
+    assert "routable_work_units" in skill
+    assert "global_blackboard.json" in skill
+    assert "dispatch_map.json" in skill
+    assert "job_envelope.json" in skill
+    assert "tick -> outbox -> relay" in skill
     assert "extensions/generic/examples/basic.json" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
+    assert "Infer the right MetaLoop workflow" in openai_yaml
 
 
 def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
@@ -158,6 +175,115 @@ def test_bundled_skill_kernel_design_status_and_verify(tmp_path) -> None:
     assert second_verify.returncode == 0
     assert "verification: completed_verified" in second_verify.stdout
     assert (tmp_path / ".metaloop" / "verification_result.json").exists()
+
+
+def test_bundled_skill_kernel_tick_and_relay_routable_work_unit(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+    source = tmp_path / "source"
+    source.mkdir()
+    target = tmp_path / "target"
+    (source / ".metaloop").mkdir()
+    (source / ".metaloop" / "verification_result.json").write_text(json.dumps({"status": "completed_verified"}), encoding="utf-8")
+
+    envelope = _hashed_envelope(
+        {
+            "schema": "metaloop.job_envelope",
+            "version": "1.0",
+            "job_id": "job-source-001",
+            "parent_job_id": None,
+            "created_at": "2026-05-12T00:00:00Z",
+            "assigned_role": "source_role",
+            "attempt": 1,
+            "retry_count": 0,
+            "policy_version": "1.0",
+            "intent": {
+                "commander_intent": "Produce a generic verified artifact.",
+                "global_blackboard_ref": "./global_blackboard.json",
+                "blackboard_hash": "sha256:source",
+            },
+            "payload": {},
+            "contract": {
+                "expected_outputs": [{"path": "artifact.json", "kind": "artifact", "hash": "sha256:artifact"}],
+                "handoff_policy": {
+                    "on_success": {"action": "dispatch", "next_role": "target_role"},
+                    "on_repair": {"action": "loop_back", "max_retries": 3},
+                    "on_redesign": {"action": "route_to", "next_role": "design_role"},
+                    "on_blocked": {"action": "escalate", "notify": "human_operator"},
+                    "on_human_acceptance": {"action": "suspend", "notify": "human_operator"},
+                    "on_contract_defect": {"action": "route_to", "next_role": "design_role"},
+                },
+            },
+        }
+    )
+    (source / "job_envelope.json").write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+
+    tick = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(source), "tick", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert tick.returncode == 0, tick.stderr
+    tick_result = json.loads(tick.stdout)
+    assert tick_result["route"]["action"] == "dispatch"
+    assert (source / ".metaloop" / "outbox" / "target_role.json").exists()
+
+    (source / "global_blackboard.json").write_text("{}", encoding="utf-8")
+    template_dir = source / "templates"
+    template_dir.mkdir()
+    template = {
+        "schema": "metaloop.job_envelope",
+        "version": "1.0",
+        "assigned_role": "target_role",
+        "policy_version": "1.0",
+        "intent": {
+            "commander_intent": "Consume the upstream verified artifact.",
+            "global_blackboard_ref": "",
+            "blackboard_hash": "",
+        },
+        "payload": {},
+        "contract": {
+            "expected_outputs": [{"path": "result.json", "kind": "artifact", "hash": "sha256:result"}],
+            "handoff_policy": {
+                "on_success": {"action": "dispatch", "next_role": "review_role"},
+                "on_repair": {"action": "loop_back", "max_retries": 3},
+                "on_redesign": {"action": "route_to", "next_role": "design_role"},
+                "on_blocked": {"action": "escalate", "notify": "human_operator"},
+                "on_human_acceptance": {"action": "suspend", "notify": "human_operator"},
+                "on_contract_defect": {"action": "route_to", "next_role": "design_role"},
+            },
+        },
+    }
+    (template_dir / "target_job_envelope.json").write_text(json.dumps(template, indent=2), encoding="utf-8")
+    dispatch_map = {
+        "schema": "metaloop.dispatch_map",
+        "version": "1.0",
+        "routes": [
+            {
+                "target": "target_role",
+                "workspace": "../target",
+                "role": "target_role",
+                "envelope_template": "templates/target_job_envelope.json",
+                "blackboard_path": "global_blackboard.json",
+            }
+        ],
+    }
+    (source / "dispatch_map.json").write_text(json.dumps(dispatch_map, indent=2), encoding="utf-8")
+
+    relay = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(source), "relay", "--dispatch-map", "dispatch_map.json", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert relay.returncode == 0, relay.stderr
+    relay_result = json.loads(relay.stdout)
+    assert relay_result["status"] == "completed"
+    assert (target / "job_envelope.json").exists()
+    target_envelope = json.loads((target / "job_envelope.json").read_text(encoding="utf-8"))
+    assert target_envelope["parent_job_id"] == "job-source-001"
+    assert target_envelope["assigned_role"] == "target_role"
+    assert (target / ".metaloop" / "inbox" / "job-source-001.json").exists()
 
 
 def test_bundled_skill_kernel_tracks_persistent_agent_threads(tmp_path) -> None:

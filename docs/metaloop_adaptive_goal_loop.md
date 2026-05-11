@@ -42,7 +42,7 @@ Codex Agent
   -> understanding, hypothesis, implementation, interpretation, strategy
 ```
 
-Do not hardcode StateTune, MAPE, frontend, backend, or paper-reproduction rules into `metaloop_core`. Put those rules in ExtensionSpec / VerificationSpec / examples.
+Do not hardcode project-specific metrics, task families, or paper-reproduction rules into `metaloop_core`. Put those rules in ExtensionSpec / VerificationSpec / examples.
 
 ## Why This Matters
 

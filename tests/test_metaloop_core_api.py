@@ -43,12 +43,17 @@ def test_workspace_state_reads_metaloop_artifacts(tmp_path) -> None:
         json.dumps({"schema": "metaloop.lightweight_verification_result", "status": "failed", "reason": "gate failed"}),
         encoding="utf-8",
     )
+    (metaloop_dir / "relay_result.json").write_text(
+        json.dumps({"schema": "metaloop.relay_result", "status": "completed"}),
+        encoding="utf-8",
+    )
 
     status = WorkspaceState(tmp_path).status()
 
     assert status["capsule"]["state"] == "ready"
     assert status["capsule"]["status"] == "designed"
     assert status["verification"]["status"] == "failed"
+    assert status["relay"]["status"] == "completed"
     assert status["threads"]["state"] == "missing"
 
 

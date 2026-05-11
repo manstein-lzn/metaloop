@@ -11,6 +11,11 @@ VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
 VERIFICATION_SCHEMA = "metaloop.lightweight_verification_result"
 THREAD_REGISTRY_SCHEMA = "metaloop.thread_registry"
 EVENT_SCHEMA = "metaloop.event"
+JOB_ENVELOPE_SCHEMA = "metaloop.job_envelope"
+GLOBAL_BLACKBOARD_SCHEMA = "metaloop.global_blackboard"
+TICK_RESULT_SCHEMA = "metaloop.tick_result"
+DISPATCH_MAP_SCHEMA = "metaloop.dispatch_map"
+RELAY_RESULT_SCHEMA = "metaloop.relay_result"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
@@ -33,3 +38,15 @@ REPAIR_DECISIONS = {"repair", "redesign", "resume", "complete"}
 ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
 ADAPTIVE_DECISIONS = {"complete", "continue", "repair", "redesign", "pivot", "stop", "escalate"}
 EVALUATION_STATUSES = {"satisfied", "not_satisfied", "partial", "unknown", "blocked", "invalid_goal"}
+
+ROUTE_ACTIONS = {"dispatch", "loop_back", "route_to", "escalate", "suspend", "wait", "diagnose", "error"}
+ROUTABLE_VERIFICATION_STATUSES = {
+    "completed_verified",
+    "execution_incomplete",
+    "failed",
+    "human_acceptance_required",
+    "invalid_capsule",
+    "missing_execution_report",
+    "missing_verification_plan",
+    "unsupported_verification_spec",
+}

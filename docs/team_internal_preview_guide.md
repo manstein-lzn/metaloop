@@ -60,10 +60,13 @@ Do not implement until the capsule and verification protocol are locked.
 For a concrete task:
 
 ```text
-Use $metaloop. I want to <task>. Start with design: clarify the goal, non-goals,
-constraints, risks, ExtensionSpec, and VerificationSpec. Lock the capsule before
-execution, then run and verify independently.
+Use $metaloop. I want to <task>.
 ```
+
+The skill should infer the MetaLoop protocol shape, inspect project context,
+start with design, ask only blocking questions, propose verification gates, and
+avoid execution until the contract is clear. Do not make users learn MetaLoop
+internals before they can use the skill.
 
 ## Preview Boundaries
 
@@ -73,6 +76,8 @@ MetaLoop currently provides:
 - bundled lightweight kernel
 - `.metaloop/` Mission Capsule, ExecutionReport, and VerificationResult files
 - locked `ExtensionSpec` and `VerificationSpec`
+- adaptive loop, event log, thread registry, tick, outbox, relay, and routable
+  job envelope support
 - validator `mode` and `severity`
 - generic executable validators for files, commands, JSON fields/metrics, text,
   hashes, and forbidden paths
@@ -84,6 +89,7 @@ MetaLoop does not yet provide:
 - a fully hardened non-bypassable runtime
 - production-grade domain extension packages for every field
 - automatic trust in agent-designed VerificationSpec
+- hidden daemon/watchers or automatic agent pools
 - strong sandbox/hook enforcement in every host environment
 
 For important work, review the proposed `VerificationSpec` before execution.

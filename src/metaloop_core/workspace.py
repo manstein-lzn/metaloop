@@ -49,6 +49,10 @@ class WorkspacePaths:
     def diagnosis_report(self) -> Path:
         return self.metaloop_dir / "diagnosis_report.json"
 
+    @property
+    def relay_result(self) -> Path:
+        return self.metaloop_dir / "relay_result.json"
+
 
 class WorkspaceState:
     """Read-only view over the portable ``.metaloop`` workspace state."""
@@ -85,6 +89,9 @@ class WorkspaceState:
     def diagnosis_report(self) -> dict[str, Any] | None:
         return self.read_json(self.paths.diagnosis_report)
 
+    def relay_result(self) -> dict[str, Any] | None:
+        return self.read_json(self.paths.relay_result)
+
     def status(self) -> dict[str, Any]:
         capsule = self.mission_capsule()
         execution = self.execution_report()
@@ -92,6 +99,7 @@ class WorkspaceState:
         adaptive_loop = self.adaptive_loop()
         observation = self.observation_report()
         diagnosis = self.diagnosis_report()
+        relay = self.relay_result()
         thread_registry = ThreadRegistry(self.root).load()
         events = EventLog(self.root).list()
         return {
@@ -102,6 +110,7 @@ class WorkspaceState:
             "adaptive_loop": _artifact_state(adaptive_loop, self.paths.adaptive_loop, status_key="status"),
             "observation": _artifact_state(observation, self.paths.observation_report, status_key="status"),
             "diagnosis": _artifact_state(diagnosis, self.paths.diagnosis_report, status_key="evaluation_status"),
+            "relay": _artifact_state(relay, self.paths.relay_result, status_key="status"),
             "threads": {
                 "state": "ready" if thread_registry else "missing",
                 "path": str(self.paths.thread_registry),

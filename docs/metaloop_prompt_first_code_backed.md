@@ -105,6 +105,9 @@ Current `metaloop_core` already owns the small code-backed truth layer:
 - Adaptive Goal Loop
 - EventLog
 - ThreadRegistry
+- Routable work-unit schemas
+- Pure router decisions
+- One-shot tick and relay results
 
 Do not keep adding report types by default. Use the existing loop unless a new state object has a clear verification or recovery role.
 

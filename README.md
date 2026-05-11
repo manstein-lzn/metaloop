@@ -10,6 +10,7 @@ Codex $metaloop skill
   -> .metaloop/Mission Capsule + VerificationSpec + ExecutionReport + VerificationResult
   -> optional persistent Codex thread roles recorded in .metaloop/threads.json
   -> adaptive goal loop events and repair/redesign decisions
+  -> optional routable work units through job envelopes, tick, outbox, and relay
 ```
 
 核心原则：**Prompt-first / code-backed**。Codex agent 和 skill prompt 负责理解、设计、反思和策略；kernel、schemas、validators、`metaloop_core` 和 `.metaloop/` artifacts 负责状态、验证、审计和恢复。
@@ -19,8 +20,10 @@ Codex $metaloop skill
 把本仓库的 `skills/metaloop/` 部署到 `${CODEX_HOME:-$HOME/.codex}/skills/metaloop`，然后在目标项目里对 Codex 说：
 
 ```text
-Use $metaloop. 我想完成 <你的目标>。请先做设计，明确目标、非目标、约束、验收方式和 VerificationSpec，锁定 Mission Capsule 后再执行。
+Use $metaloop. 我想完成 <你的目标>。
 ```
+
+用户不需要知道 Mission Capsule、VerificationSpec、Adaptive Loop、blackboard、job envelope、tick 或 relay 的细节。Codex 在 `$metaloop` skill 内负责判断任务形态、主动设计协议、提出必要确认、锁定验证方式，再进入执行和反馈闭环。
 
 团队一键安装说明见 [docs/codex_install_metaloop_skill.md](docs/codex_install_metaloop_skill.md)，团队内测边界见 [docs/team_internal_preview_guide.md](docs/team_internal_preview_guide.md)。
 
@@ -48,12 +51,14 @@ docs/                 当前产品原则和团队使用文档
 - Adaptive Goal Loop：当目标未达成时，记录观察、评估、诊断、下一轮计划和 repair/redesign 决策。
 - Thread registry：多个 Codex thread 参与时，用 `.metaloop/threads.json` 记录职责和 handoff 边界。
 - Event log：用 `.metaloop/event_log.jsonl` 记录长任务中的关键观察、阻塞、决策和验证笔记。
+- Routable work units：当一个工作单元不够时，用 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`tick`、`outbox` 和 `relay` 做显式、可审计的跨节点交接。
 
 ## MetaLoop 不管什么
 
 - 不替代 Codex agent 的项目理解、搜索、编码、调试和实验设计能力。
 - 不提供独立聊天界面。
 - 不维护旧式多 agent 执行流水线。
+- 不启动后台 daemon、watcher、自动 agent pool 或隐藏调度器。
 - 不把领域规则塞进 core；具体领域通过 ExtensionSpec / VerificationSpec 表达证据类型、指标门槛、风险规则和 validators。
 - 不把自然语言的“完成了”当成 verified completion。
 
@@ -71,7 +76,7 @@ python3 -m venv .venv
 
 ```bash
 python3 tools/check_core_import_boundary.py
-.venv/bin/pytest tests/test_metaloop_core_api.py tests/test_metaloop_core_adaptive_loop.py tests/test_metaloop_core_feedback.py tests/test_metaloop_core_skill_parity.py tests/test_metaloop_core_verification.py tests/test_skill_package.py -q
+.venv/bin/pytest -q
 git diff --check
 ```
 
@@ -84,5 +89,6 @@ git diff --check
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：ExtensionSpec / VerificationSpec 扩展协议。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：多 thread agent 协作协议。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环。
+- [docs/metaloop_routable_work_units.md](docs/metaloop_routable_work_units.md)：面向多节点路由的 job envelope / blackboard / router 骨架。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则。
 - [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律。

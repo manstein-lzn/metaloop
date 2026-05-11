@@ -24,6 +24,25 @@ MetaLoop is skill-first, not prompt-only.
 
 Use prompts, examples, and Codex reasoning for understanding, diagnosis, strategy, experiment design, and next-plan decisions. Use code and `.metaloop/` artifacts for durable state, locked contracts, verification, audit, and recovery. Do not add framework code when a small prompt protocol plus durable artifact is enough.
 
+## User Burden Rule
+
+The user should not have to know MetaLoop's internal protocol. When this skill is invoked, Codex owns the MetaLoop workflow.
+
+Do not require the user to prompt for Mission Capsules, VerificationSpecs, Adaptive Loops, blackboards, dispatch maps, job envelopes, tick, relay, or role decomposition. Infer which protocol pieces are needed from the task shape, explain the proposed design in plain language, and ask only targeted questions that are genuinely blocking.
+
+The user supplies intent, priorities, constraints, and acceptance judgment. Codex supplies the protocol design, artifact layout, verification gates, feedback loop, and handoff plan.
+
+For complex or open-ended tasks, the first MetaLoop response must:
+
+- inspect the current `.metaloop/` state and relevant project context before execution
+- restate the inferred goal, constraints, non-goals, and unknowns
+- propose the Mission Capsule and VerificationSpec strategy
+- decide whether one node is enough or whether routable work units are needed
+- identify the minimum user confirmations required before locking the contract
+- refuse to start implementation, training, experiments, or broad edits until the contract and verification plan are clear
+
+If user input is missing but a conservative assumption is safe, state the assumption and proceed with design. If the missing input changes the target, acceptance, cost, data access, external resources, or risk profile, ask a short concrete question before locking the capsule.
+
 ## Current Product Shape
 
 Prefer this skill-first shape for complex projects:
@@ -88,6 +107,20 @@ python3 "$KERNEL" --workspace . event append \
 
 Events are not a scheduler. They are a compact audit trail that helps agents resume, hand off, and explain why a long task changed direction.
 
+For tasks that are too large for one reliable work unit, design a routable work-unit network without making the user specify the machinery:
+
+```text
+global_blackboard.json  -> stable shared facts only
+job_envelope.json       -> task handoff contract
+dispatch_map.json       -> static address book for downstream workspaces
+tick                    -> one local route/effect step
+relay                   -> one explicit outbox delivery step
+```
+
+Use this shape only when the task naturally needs isolated responsibilities, long-running attempts, hard metric gates, independent diagnosis, or cross-node handoff. Keep it minimal: start with one node unless separate responsibilities are necessary.
+
+The blackboard is a fact registry, not a shared mind. Job envelopes are contracts, not chat transcripts. Tick and relay are one-shot file operations, not daemons or schedulers.
+
 ## When To Use
 
 Use MetaLoop when the task benefits from at least one of:
@@ -121,6 +154,14 @@ python3 "$KERNEL" --workspace . event list --limit 5
 ```
 
 2. Before execution, design the verification protocol. Classify the task domain, decide whether the bundled generic extension is enough, and if not, propose a task-specific ExtensionSpec plus VerificationSpec. Mark every validator with `mode` (`executable`, `manual`, or `unsupported`) and `severity` (`blocking` or `advisory`). Do not execute until the Mission Capsule, ExtensionSpec, and VerificationSpec are locked.
+
+During design, Codex must proactively decide the protocol shape:
+
+- `single_node`: one Mission Capsule and one Adaptive Loop are enough
+- `multi_thread`: persistent Codex threads are useful but share one capsule truth
+- `routable_work_units`: separate workspaces/contracts should exchange job envelopes through outbox/relay
+
+Do not ask the user to choose these labels. Choose the smallest shape that can preserve correctness, context isolation, verification integrity, and recovery.
 
 A capsule cannot be locked from intent alone; include rationale, non-goals, acceptance, and either executable validators or explicit `--allow-manual-only`:
 
@@ -185,6 +226,14 @@ For repeated attempts, do not merely rerun commands. Apply the Adaptive Goal Loo
 
 After a failed or partial VerificationResult, do not run another attempt until the loop has recorded observable feedback and a control decision: observation, evaluation, diagnosis, decision, and next_plan. In repositories with `metaloop_core`, `ObservationReport` and `DiagnosisReport` may be produced from ExecutionReport plus VerificationResult; in skill-only mode, record the same content through `adaptive record` or `event append`.
 
+For routable work units, the normal lifecycle is:
+
+```text
+node design -> node run -> node verify -> adaptive diagnosis when needed -> tick -> outbox -> relay -> downstream node design/run
+```
+
+The agent should create or revise target-project artifacts such as `global_blackboard.json`, `dispatch_map.json`, `job_envelope.json`, envelope templates, and node-specific Mission Capsules only inside the user's target project. Do not add project-specific tasks, datasets, metrics, or business rules to the MetaLoop skill or MetaLoop core.
+
 ## Dissatisfaction Classification
 
 - `repair`: target and acceptance are still correct; implementation is defective.
@@ -213,6 +262,8 @@ Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. R
 - If a core metric gate fails, say the target failed. Do not present `completed_with_limitations` or artifact production as goal success.
 - Skill instructions do not provide non-bypassable guarantees.
 - Do not build a parallel state system outside `.metaloop/` artifacts.
+- Do not make the user manually specify MetaLoop internals when the skill can infer them from the project and task.
+- Do not store project-specific task logic, datasets, metrics, or domain facts in this skill or in MetaLoop core.
 
 ## References
 

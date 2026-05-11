@@ -10,6 +10,9 @@ from metaloop_core.execution import build_execution_report, load_execution_repor
 from metaloop_core.feedback import DiagnosisReport, ObservationReport, diagnose_next, observe_workspace, write_diagnosis_report, write_observation_report
 from metaloop_core.ids import new_id, utc_now
 from metaloop_core.repair_redesign import classify_dissatisfaction
+from metaloop_core.relay import load_dispatch_map, load_outbox_items, relay_outbox, validate_dispatch_map, write_relay_result
+from metaloop_core.routing import job_envelope_hash, latest_adaptive_decision, route_next_hop, route_workspace, validate_global_blackboard, validate_job_envelope
+from metaloop_core.tick import tick_workspace, write_tick_result
 from metaloop_core.thread_registry import ThreadRegistry
 from metaloop_core.verification import VerificationSummary, load_verification_summary, verify_workspace
 from metaloop_core.workspace import WorkspacePaths, WorkspaceState
@@ -30,16 +33,29 @@ __all__ = [
     "decide_next",
     "diagnose_next",
     "load_adaptive_loop",
+    "load_dispatch_map",
     "load_execution_report",
+    "load_outbox_items",
     "load_verification_summary",
+    "job_envelope_hash",
+    "latest_adaptive_decision",
     "new_adaptive_loop",
     "new_id",
     "observe_workspace",
+    "relay_outbox",
     "record_iteration",
+    "route_next_hop",
+    "route_workspace",
+    "tick_workspace",
     "utc_now",
     "verify_workspace",
+    "validate_dispatch_map",
+    "validate_global_blackboard",
+    "validate_job_envelope",
     "write_adaptive_loop",
     "write_diagnosis_report",
     "write_execution_report",
     "write_observation_report",
+    "write_relay_result",
+    "write_tick_result",
 ]

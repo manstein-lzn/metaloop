@@ -1,10 +1,12 @@
 # MetaLoop 当前状态
 
-最后更新：2026-05-09
+最后更新：2026-05-12
 
 ## 一句话状态
 
 MetaLoop 已收敛为 **Skill-only / skill-only** 产品：团队通过 Codex `$metaloop` skill 使用它；仓库只保留自包含 skill package、`metaloop_core` 协议库、当前文档和测试。旧的仓库级交互运行时、聊天界面、外部 agent 编排器、Node bridge、prompt pack 和相关测试已经移除。
+
+当前补充原则：用户不需要理解 MetaLoop 内部协议。用户给目标、约束和验收判断；Codex 通过 `$metaloop` skill 主动完成 design、VerificationSpec、Adaptive Loop、必要的多节点拆分和后续 run/verify/repair/redesign 流程。
 
 当前主路径：
 
@@ -15,6 +17,7 @@ Codex agent conversation
   -> Codex executes with project intelligence
   -> locked validators verify evidence
   -> repair / redesign / resume / complete decision
+  -> optional tick / outbox / relay for explicit routable handoff
 ```
 
 ## 核心判断
@@ -25,11 +28,12 @@ Codex agent conversation
 - Agent 可以设计验证方案，但不能在执行后临时改验证来迁就结果。
 - Domain extension 提供领域验证语言，MetaLoop Core 不塞满领域规则。
 - 多个 Codex thread 可以围绕同一目标协作，但共享真相必须写入 `.metaloop/`，不能只靠聊天记忆。
+- 对超出单个可靠工作单元的复杂任务，MetaLoop 支持可路由工作单元，但仍保持 one-shot 文件操作，不引入后台调度器。
 
 ## 保留的代码面
 
 - `skills/metaloop/`：可一键部署的 Codex Skill，内含 portable kernel、generic extension、参考文档和 metadata。
-- `src/metaloop_core/`：可复用协议库，提供 Mission Capsule I/O、ExecutionReport I/O、VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、adaptive loop、ObservationReport / DiagnosisReport 和 repair/redesign vocabulary。
+- `src/metaloop_core/`：可复用协议库，提供 Mission Capsule I/O、ExecutionReport I/O、VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、adaptive loop、ObservationReport / DiagnosisReport、repair/redesign vocabulary、routable work unit routing、tick 和 relay。
 - `tools/check_core_import_boundary.py`：确保 core 不重新依赖已移除的外部产品面。
 - `tests/`：只保留 core、skill package、core/skill parity 和 verification 测试。
 
@@ -45,13 +49,14 @@ Codex agent conversation
 
 ## 当前能力
 
-- `skills/metaloop/scripts/metaloop_kernel.py` 支持 `status`、`design`、`run`、`verify`、`mark`、`threads`、`event`、`adaptive`。
+- `skills/metaloop/scripts/metaloop_kernel.py` 支持 `status`、`design`、`run`、`verify`、`mark`、`threads`、`event`、`adaptive`、`tick`、`relay`。
 - Mission Capsule 内锁定 ExtensionSpec 和 VerificationSpec，并记录 hash。
 - bundled generic extension 支持 `file_exists`、`command`、`forbidden_path`、`json_metric_gate`、`json_field_exists`、`file_contains`、`artifact_hash`、`forbidden_claim`、`manual_acceptance`、`resource_gate`。
 - 验证阶段会检查 capsule/report/spec schema、hash、manual blocker、unsupported blocker 和 hard validator 结果。
 - `.metaloop/threads.json` 可记录 persistent Codex thread 的 role、thread_id、职责和 handoff 状态。
 - `.metaloop/event_log.jsonl` 可记录长任务观察、决策、阻塞、handoff、验证、repair 和 redesign。
 - `.metaloop/adaptive_loop.json` 支持通用目标逼近闭环：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
+- `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
 
 ## 当前测试目标
 
@@ -65,7 +70,7 @@ git diff --check
 
 ## 下一步
 
-1. 继续打磨 `$metaloop` skill 的 design 指南，让 agent 对开放型任务提出更严格的 VerificationSpec。
+1. 继续打磨 `$metaloop` skill 的主动 design 指南，让 agent 自动选择单节点、多 thread 或 routable work units，而不是要求用户指定 MetaLoop 内部机制。
 2. 增加少量高质量 domain extension examples，但不要把领域规则写死进 core。
 3. 加强 adaptive loop 的失败诊断和下一轮计划模板，保持 prompt-first，不急于代码化复杂策略。
 4. 建立团队内测反馈机制：记录哪些任务需要更强 hooks、sandbox 或 wrapper runtime，再决定是否新增外层约束。
@@ -78,3 +83,4 @@ git diff --check
 - 不要把完整聊天史当 operational memory。
 - 不要为每个有用推理模式新增 Python 模块。
 - 不要在没有真实需求前添加重型 scheduler、agent pool 或领域专用框架。
+- 不要把任何具体项目、数据集、指标或业务逻辑写进 MetaLoop core 或 skill；这些只应出现在目标项目自己的 ExtensionSpec、VerificationSpec、capsule、blackboard 或模板里。

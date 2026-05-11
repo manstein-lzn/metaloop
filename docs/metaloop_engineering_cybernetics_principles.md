@@ -74,7 +74,7 @@ These are generic evidence-processing artifacts. They are not domain intelligenc
    Important state belongs under `.metaloop/`, not only in chat memory.
 
 3. Keep core domain-neutral.
-   `metaloop_core` must not know StateTune, MAPE, frontend screenshots, backend logs, or paper tables. Domain extensions define those evidence languages.
+   `metaloop_core` must not know task-specific metrics, screenshots, logs, or paper tables. Domain extensions define those evidence languages.
 
 4. Keep constraints stable.
    Execution failure must not weaken Mission Capsule or VerificationSpec. Contract changes route through redesign.
