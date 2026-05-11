@@ -43,6 +43,35 @@ For complex or open-ended tasks, the first MetaLoop response must:
 
 If user input is missing but a conservative assumption is safe, state the assumption and proceed with design. If the missing input changes the target, acceptance, cost, data access, external resources, or risk profile, ask a short concrete question before locking the capsule.
 
+## Design Autonomy Protocol
+
+The skill should reduce user burden by making the first design move itself.
+When invoked on a non-trivial task, Codex should inspect the project, classify
+the task shape, and choose the smallest adequate protocol shape before
+execution:
+
+- `single_node` when one Mission Capsule and one local loop are enough
+- `multi_thread` when several persistent threads help but one workspace truth
+  remains authoritative
+- `routable_work_units` when separate responsibilities need envelopes, outbox,
+  relay, and shared blackboard facts
+
+Do not ask the user to choose these labels. Do not ask the user to hand-author
+MetaLoop internals. Ask only concrete blocking questions that change the
+contract, risk, cost, or acceptance target.
+
+The first design response should normally include:
+
+- inferred goal, non-goals, constraints, and unknowns
+- the chosen protocol shape
+- the proposed Mission Capsule and VerificationSpec strategy
+- the minimum user confirmations needed before locking the capsule
+- the target-project artifacts that may be created or revised
+
+If the task can proceed safely with a conservative assumption, state the
+assumption and continue with design. If it cannot, stop and ask a short, direct
+question.
+
 ## Current Product Shape
 
 Prefer this skill-first shape for complex projects:

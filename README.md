@@ -89,6 +89,7 @@ git diff --check
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：ExtensionSpec / VerificationSpec 扩展协议。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：多 thread agent 协作协议。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环。
+- [docs/metaloop_design_autonomy.md](docs/metaloop_design_autonomy.md)：如何让 `$metaloop` 自动完成设计、分类任务形态并降低用户心智负担。
 - [docs/metaloop_routable_work_units.md](docs/metaloop_routable_work_units.md)：面向多节点路由的 job envelope / blackboard / router 骨架。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则。
 - [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律。

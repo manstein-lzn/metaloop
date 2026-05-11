@@ -35,7 +35,11 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "The user should not have to know MetaLoop's internal protocol." in skill
     assert "Codex owns the MetaLoop workflow." in skill
     assert "Do not require the user to prompt for Mission Capsules" in skill
+    assert "Design Autonomy Protocol" in skill
+    assert "single_node" in skill
+    assert "multi_thread" in skill
     assert "routable_work_units" in skill
+    assert "Ask only concrete blocking questions" in skill
     assert "global_blackboard.json" in skill
     assert "dispatch_map.json" in skill
     assert "job_envelope.json" in skill
@@ -43,7 +47,8 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "extensions/generic/examples/basic.json" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
-    assert "Infer the right MetaLoop workflow" in openai_yaml
+    assert "Infer the task shape" in openai_yaml
+    assert "ask only blocking questions" in openai_yaml
 
 
 def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
@@ -73,6 +78,7 @@ def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
     skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
     reference = (ROOT / "skills" / "metaloop" / "references" / "prompt_first_code_backed.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    design = (ROOT / "docs" / "metaloop_design_autonomy.md").read_text(encoding="utf-8")
 
     assert "references/prompt_first_code_backed.md" in skill
     assert "Prompt handles intelligence. Code handles truth." in reference
@@ -81,6 +87,10 @@ def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
     assert "Prefer examples before framework code" in reference
     assert "Do not add a new Python module for every useful reasoning pattern." in reference
     assert "Prompt-first / code-backed" in readme
+    assert "docs/metaloop_design_autonomy.md" in readme
+    assert "Design Autonomy" in design
+    assert "single_node" in design
+    assert "routable_work_units" in design
 
 
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
