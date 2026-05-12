@@ -85,6 +85,24 @@ A Mission Capsule should be readable by both user and Codex. Keep it focused on:
 
 It is not a full transcript.
 
+## Six Control Gates
+
+MetaLoop should stay as a critical-control layer around Codex, not an agent
+runtime. The six gates are:
+
+- Design Gate: clarify target, boundaries, evidence, and stopping conditions.
+- State Checkpoint: write important state into `.metaloop/` after key actions.
+- Verification Gate: use locked validators and evidence instead of worker
+  self-report.
+- Adaptive Loop: diagnose failed or partial attempts before retrying.
+- Control Point: consume explicit `.metaloop/control/*.json` intent at safe
+  points.
+- Observation Surface: expose goal, plan, verification, blockers, context, and
+  next action through read-only summaries.
+
+Workers should apply these gates at safe points: before attempts, before
+expensive work, after attempts, before completion claims, and before handoff.
+
 ## Context Checkpoints
 
 Long tasks should not rely on the private Codex thread staying readable

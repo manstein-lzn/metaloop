@@ -99,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     observe_parser = subparsers.add_parser("observe", help="Print read-only node or root summaries.")
     observe_parser.add_argument("--scope", choices=["node", "root"], default="node", help="Observe one node or a root containing node workspaces.")
     observe_parser.add_argument("--root", help="Root path for --scope root. Defaults to --workspace.")
+    observe_parser.add_argument("--format", choices=["full", "brief"], default="full", help="Output detail for non-JSON and JSON views.")
     observe_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
     control_parser = subparsers.add_parser("control", help="Write or inspect explicit control intent files.")
@@ -325,8 +326,13 @@ def _observe(workspace: Path, args: argparse.Namespace) -> int:
     if args.scope == "root":
         root = Path(args.root).expanduser().resolve() if args.root else workspace
         payload = _observe_root(root)
+        if args.format == "brief":
+            payload = _brief_root_summary(payload)
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 0
+        if args.format == "brief":
+            _print_brief_root(payload)
             return 0
         print(f"root: {payload['root']}")
         print(f"nodes: {payload['node_count']}")
@@ -336,8 +342,13 @@ def _observe(workspace: Path, args: argparse.Namespace) -> int:
             print(f"- {node.get('node_id')}: status={node.get('status')}{waiting} workspace={node.get('workspace')}")
         return 0
     payload = _observe_node(workspace)
+    if args.format == "brief":
+        payload = _brief_node_summary(payload)
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if args.format == "brief":
+        _print_brief_node(payload)
         return 0
     print(f"node: {payload['node_id']}")
     print(f"workspace: {payload['workspace']}")
@@ -355,6 +366,90 @@ def _control(workspace: Path, args: argparse.Namespace) -> int:
     if args.control_command == "list":
         return _control_list(workspace, as_json=args.json)
     return 2
+
+
+def _brief_node_summary(node: dict[str, Any]) -> dict[str, Any]:
+    context = node.get("context") if isinstance(node.get("context"), dict) else {}
+    verification = node.get("last_verification") if isinstance(node.get("last_verification"), dict) else {}
+    event = node.get("last_event") if isinstance(node.get("last_event"), dict) else {}
+    return {
+        "schema": "metaloop.node_brief",
+        "version": "1.0",
+        "workspace": node.get("workspace", ""),
+        "node_id": node.get("node_id", ""),
+        "status": node.get("status", ""),
+        "goal": node.get("goal", ""),
+        "current_plan": node.get("current_plan", ""),
+        "waiting_on": node.get("waiting_on", ""),
+        "pending_controls": node.get("pending_controls", []),
+        "verification_status": verification.get("status", ""),
+        "verification_reason": verification.get("reason", ""),
+        "adaptive_decision": node.get("adaptive_decision", ""),
+        "latest_event": event.get("summary", ""),
+        "best_metric": node.get("best_metric"),
+        "context_state": context.get("state", ""),
+        "context_ready_count": context.get("ready_count", 0),
+        "missing_context": context.get("missing", []),
+        "outbox_count": node.get("outbox_count", 0),
+        "inbox_count": node.get("inbox_count", 0),
+        "updated_at": node.get("updated_at", ""),
+        "next_action": _brief_next_action(node),
+    }
+
+
+def _brief_root_summary(root: dict[str, Any]) -> dict[str, Any]:
+    nodes = [_brief_node_summary(node) for node in root.get("nodes", []) if isinstance(node, dict)]
+    return {
+        "schema": "metaloop.root_brief",
+        "version": "1.0",
+        "root": root.get("root", ""),
+        "node_count": root.get("node_count", 0),
+        "status_counts": root.get("status_counts", {}),
+        "blocked_count": len([node for node in nodes if node.get("waiting_on") or node.get("status") in {"blocked", "human_acceptance_required"}]),
+        "outbox_count": root.get("outbox_count", 0),
+        "inbox_count": root.get("inbox_count", 0),
+        "nodes": nodes,
+    }
+
+
+def _print_brief_node(node: dict[str, Any]) -> None:
+    print(f"node: {node.get('node_id') or '-'}")
+    print(f"status: {node.get('status') or '-'} waiting_on={node.get('waiting_on') or '-'}")
+    print(f"goal: {node.get('goal') or '-'}")
+    print(f"plan: {node.get('current_plan') or '-'}")
+    print(f"verification: {node.get('verification_status') or '-'}")
+    print(f"decision: {node.get('adaptive_decision') or '-'}")
+    print(f"context: {node.get('context_state') or '-'} ready={node.get('context_ready_count', 0)}")
+    print(f"next_action: {node.get('next_action') or '-'}")
+
+
+def _print_brief_root(root: dict[str, Any]) -> None:
+    print(f"root: {root.get('root')}")
+    print(f"nodes: {root.get('node_count')} blocked={root.get('blocked_count')} outbox={root.get('outbox_count')} inbox={root.get('inbox_count')}")
+    for node in root.get("nodes", []):
+        waiting = f" waiting_on={node.get('waiting_on')}" if node.get("waiting_on") else ""
+        print(f"- {node.get('node_id')}: status={node.get('status')}{waiting} next={node.get('next_action')}")
+
+
+def _brief_next_action(node: dict[str, Any]) -> str:
+    if node.get("pending_controls"):
+        return "Process pending control intent at the next safe point."
+    waiting_on = str(node.get("waiting_on") or "")
+    if waiting_on == "human_acceptance":
+        return "Request explicit human acceptance or revise manual gate."
+    if waiting_on == "execution":
+        return "Run the next attempt and write ExecutionReport evidence."
+    if waiting_on == "design":
+        return "Redesign Mission Capsule or VerificationSpec before execution."
+    verification = node.get("last_verification") if isinstance(node.get("last_verification"), dict) else {}
+    status = str(verification.get("status") or node.get("status") or "")
+    if status == "completed_verified":
+        return "Completion can be reported with locked verification evidence."
+    if status == "failed":
+        return "Record adaptive diagnosis and choose repair, redesign, pivot, stop, or continue."
+    if node.get("status") == "missing":
+        return "Run Design Gate and lock Mission Capsule plus VerificationSpec."
+    return "Continue from the locked plan and update state at the next safe point."
 
 
 def _control_write(workspace: Path, args: argparse.Namespace) -> int:

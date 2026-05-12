@@ -23,6 +23,25 @@ Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints wh
 MetaLoop is skill-first, not prompt-only. Keep the prompt surface short and
 outcome-first; use `.metaloop/` artifacts for durable truth.
 
+## Six-Gate Model
+
+MetaLoop is not an agent runtime. Codex is responsible for understanding,
+creation, search, coding, experiments, interpretation, and strategy. MetaLoop
+provides six lightweight control points:
+
+1. `Design Gate`: clarify goal, non-goals, constraints, evidence, success, and
+   stopping conditions before substantial execution.
+2. `State Checkpoint`: preserve important observations, decisions, execution
+   evidence, adaptive iterations, and context checkpoints in `.metaloop/`.
+3. `Verification Gate`: locked validators and evidence decide completion; do
+   not accept worker self-report.
+4. `Adaptive Loop`: after failure or partial progress, record observation,
+   evaluation, diagnosis, decision, and next plan before retrying.
+5. `Control Point`: read explicit `.metaloop/control/*.json` intent at safe
+   points; do not silently approve resources or mutate locked contracts.
+6. `Observation Surface`: keep status visible through read-only summaries,
+   events, verification, context checkpoint health, and pending controls.
+
 ## User Burden Rule
 
 The user should be able to say only:
@@ -118,6 +137,7 @@ python3 "$KERNEL" --workspace . context write --file resume_brief.md --content "
 python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
 python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
 python3 "$KERNEL" --workspace . observe --scope root --json
+python3 "$KERNEL" --workspace . observe --format brief
 python3 "$KERNEL" --workspace . control write --type halt --reason "<why>"
 python3 "$KERNEL" --workspace . activate --root . --worker-command "<explicit command>"
 ```
@@ -144,6 +164,12 @@ For long tasks, keep `.metaloop/context/resume_brief.md` current enough that a
 new Codex thread can resume without reading the full transcript. Context
 checkpoints are compact Markdown recovery notes, not a second memory system.
 Update them after major diagnosis changes, repeated attempts, or handoff.
+
+Safe-point discipline: before an attempt, check status, controls, and context;
+before expensive work, honor resource/control gates; after an attempt, write
+evidence, verify, and record adaptive diagnosis; before completion, rely on
+locked verification; before handoff, update event/context/thread or outbox
+state.
 
 ## Validation Discipline
 
@@ -182,6 +208,7 @@ decision, and next plan before another attempt.
   into `.metaloop/` artifacts.
 - `resume_brief.md` is recovery context, not task truth; it must point back to
   locked artifacts and evidence.
+- Safe-point checks are a worker discipline, not a hidden scheduler.
 - ExtensionSpec and VerificationSpec are locked with the Mission Capsule and
   carry hashes.
 - Verification requires a valid ExecutionReport.
@@ -199,5 +226,6 @@ decision, and next plan before another attempt.
 - `references/prompt_first_code_backed.md`: prompt-first / code-backed product
   discipline.
 - Project docs, when present: `README.md`, `STATE.md`, `HANDOFF.md`,
-  `docs/metaloop_context_checkpoints.md`, `docs/metaloop_design_autonomy.md`, and
+  `docs/metaloop_six_gate_model.md`, `docs/metaloop_context_checkpoints.md`,
+  `docs/metaloop_design_autonomy.md`, and
   `docs/metaloop_routable_work_units.md`.

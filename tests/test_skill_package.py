@@ -49,6 +49,13 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert ".metaloop/control/" in skill
     assert "activate" in skill
     assert "context" in skill
+    assert "Six-Gate Model" in skill
+    assert "Design Gate" in skill
+    assert "State Checkpoint" in skill
+    assert "Verification Gate" in skill
+    assert "Control Point" in skill
+    assert "Observation Surface" in skill
+    assert "Safe-point discipline" in skill
     assert "do not make a" in skill
     assert "dashboard or observer silently route work" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
@@ -83,6 +90,24 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert "bounded inspection" in reference
     assert "process-heavy prompts" in reference
     assert "context" in reference
+    assert "Six Control Gates" in reference
+
+
+def test_six_gate_model_doc_is_linked_and_runtime_bounded() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "metaloop_six_gate_model.md").read_text(encoding="utf-8")
+
+    assert "docs/metaloop_six_gate_model.md" in readme
+    assert "MetaLoop is not an agent runtime" in doc
+    assert "Design Gate" in doc
+    assert "State Checkpoint" in doc
+    assert "Verification Gate" in doc
+    assert "Adaptive Loop" in doc
+    assert "Control Point" in doc
+    assert "Observation Surface" in doc
+    assert "Safe-Point Protocol" in doc
+    assert "Do not" in doc
+    assert "build a hidden scheduler" in doc
 
 
 def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
@@ -369,6 +394,18 @@ def test_bundled_skill_kernel_observe_control_and_activate(tmp_path) -> None:
     assert summary["schema"] == "metaloop.node_summary"
     assert summary["node_id"] == "job-activation-001"
     assert summary["goal"] == "Handle the delivered work unit."
+
+    observe_brief = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(node), "observe", "--format", "brief", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert observe_brief.returncode == 0, observe_brief.stderr
+    brief = json.loads(observe_brief.stdout)
+    assert brief["schema"] == "metaloop.node_brief"
+    assert brief["node_id"] == "job-activation-001"
+    assert "next_action" in brief
 
     activate_dry_run = subprocess.run(
         [sys.executable, str(kernel), "--workspace", str(tmp_path), "activate", "--worker-command", "printf started > marker.txt", "--json"],

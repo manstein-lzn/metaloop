@@ -17,6 +17,8 @@ Codex $metaloop skill
 
 核心原则：**Prompt-first / code-backed**。Codex agent 和 skill prompt 负责理解、设计、反思和策略；kernel、schemas、validators、`metaloop_core` 和 `.metaloop/` artifacts 负责状态、验证、审计和恢复。
 
+产品收敛原则：**MetaLoop 不做 agent runtime，MetaLoop 做关键控制点。** 当前核心模型是六个 gate：Design Gate、State Checkpoint、Verification Gate、Adaptive Loop、Control Point、Observation Surface。
+
 ## 怎么使用
 
 把本仓库的 `skills/metaloop/` 部署到 `${CODEX_HOME:-$HOME/.codex}/skills/metaloop`，然后在目标项目里对 Codex 说：
@@ -91,6 +93,7 @@ git diff --check
 - [HANDOFF.md](HANDOFF.md)：给下一位 Codex/session 的接手说明。
 - [ROADMAP.md](ROADMAP.md)：后续路线。
 - [docs/metaloop_lightweight_protocol_reframing.md](docs/metaloop_lightweight_protocol_reframing.md)：轻量协议层与 skill 边界。
+- [docs/metaloop_six_gate_model.md](docs/metaloop_six_gate_model.md)：MetaLoop 六个关键控制点和 safe-point 纪律。
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：ExtensionSpec / VerificationSpec 扩展协议。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：多 thread agent 协作协议。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环。

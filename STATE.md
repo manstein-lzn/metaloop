@@ -23,6 +23,7 @@ Codex agent conversation
 ## 核心判断
 
 - MetaLoop 的核心不是自己变成 agent runtime，而是稳定复杂任务的 design、verification、feedback 和 audit。
+- MetaLoop 已收敛为六个关键控制点：Design Gate、State Checkpoint、Verification Gate、Adaptive Loop、Control Point、Observation Surface。
 - Prompt-first / code-backed：prompt 和 skill 负责智能，代码和 `.metaloop/` artifacts 负责真相。
 - Design 必须先于执行；Mission Capsule 和 VerificationSpec 是执行合同。
 - Agent 可以设计验证方案，但不能在执行后临时改验证来迁就结果。
@@ -61,6 +62,7 @@ Codex agent conversation
 - `.metaloop/context/*.md` 支持长任务上下文压缩：`resume_brief.md`、`current_hypothesis.md`、`failed_attempts.md`、`project_brief.md`。
 - `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
 - `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
+- bundled kernel 支持 `observe --format brief`，用于最小 dashboard/仪表盘式状态视图。
 - `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
 - `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
 
