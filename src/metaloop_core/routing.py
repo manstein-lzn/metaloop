@@ -119,7 +119,9 @@ def route_next_hop(
     if status == "completed_verified":
         return {**base, **_policy_action(policy, "on_success", "Completed verified; dispatching according to policy.")}
     if status == "human_acceptance_required":
-        return {**base, **_policy_action(policy, "on_human_acceptance", "Human acceptance is required.")}
+        return {**base, **_policy_action(policy, "on_human_acceptance", "User authority is required.")}
+    if status == "review_required":
+        return {**base, **_policy_action(policy, "on_review_required", "Independent Codex reviewer judgment is required.", fallback_key="on_human_acceptance")}
     if status in {"missing_execution_report", "execution_incomplete"}:
         return {**base, "action": "wait", "reason": "Execution has not produced a completed report yet."}
     if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
@@ -189,6 +191,13 @@ def _validate_handoff_policy(payload: Any) -> list[str]:
         action = payload[key].get("action")
         if action not in ROUTE_ACTIONS:
             errors.append(f"contract.handoff_policy.{key}.action must be one of {sorted(ROUTE_ACTIONS)}")
+    if "on_review_required" in payload:
+        if not isinstance(payload.get("on_review_required"), dict):
+            errors.append("contract.handoff_policy.on_review_required must be an object")
+        else:
+            action = payload["on_review_required"].get("action")
+            if action not in ROUTE_ACTIONS:
+                errors.append(f"contract.handoff_policy.on_review_required.action must be one of {sorted(ROUTE_ACTIONS)}")
     return errors
 
 
@@ -208,8 +217,12 @@ def _validate_blackboard_fact(fact: Any, index: int) -> list[str]:
     return errors
 
 
-def _policy_action(policy: dict[str, Any], key: str, reason: str) -> dict[str, Any]:
-    item = policy.get(key, {})
+def _policy_action(policy: dict[str, Any], key: str, reason: str, *, fallback_key: str | None = None) -> dict[str, Any]:
+    item = policy.get(key)
+    if not isinstance(item, dict) and fallback_key is not None:
+        item = policy.get(fallback_key)
+    if not isinstance(item, dict):
+        item = {}
     action = item.get("action")
     result = {"action": action if action in ROUTE_ACTIONS else "error", "reason": reason}
     for target_key in ["target", "target_role", "next_role", "notify"]:

@@ -72,9 +72,11 @@ def test_core_and_skill_kernel_verify_same_manual_status(tmp_path) -> None:
     assert skill.returncode == 1
     skill_result = json.loads(skill.stdout)
 
-    assert core_result["status"] == skill_result["status"] == "human_acceptance_required"
+    assert core_result["status"] == skill_result["status"] == "review_required"
     assert core_result["manual_validator_results"][0]["type"] == "manual_acceptance"
     assert skill_result["manual_validator_results"][0]["type"] == "manual_acceptance"
+    assert core_result["manual_validator_results"][0]["reviewer"] == "codex_reviewer"
+    assert skill_result["manual_validator_results"][0]["reviewer"] == "codex_reviewer"
 
 
 def test_core_and_skill_kernel_share_thread_registry_semantics(tmp_path) -> None:

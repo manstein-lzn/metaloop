@@ -56,7 +56,8 @@ Recommended first-pass actions:
 - `completed_verified` -> dispatch downstream
 - `failed` + `repair` -> loop back
 - `failed` + `redesign` or `pivot` -> route to design or architecture
-- `human_acceptance_required` -> suspend
+- `review_required` -> suspend or route to an independent Codex reviewer
+- `human_acceptance_required` -> suspend for user-only authority
 - `unsupported_verification_spec` or `missing_verification_plan` -> route back to design
 - `missing_execution_report` or `execution_incomplete` -> wait
 

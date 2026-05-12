@@ -104,11 +104,11 @@ def test_verification_summary_counts_blockers(tmp_path) -> None:
     (metaloop_dir / "verification_result.json").write_text(
         json.dumps(
             {
-                "status": "human_acceptance_required",
-                "reason": "manual review remains",
+                "status": "review_required",
+                "reason": "review remains",
                 "hard_validator_results": [{"severity": "blocking", "passed": True}],
                 "forbidden_path_results": [],
-                "manual_validator_results": [{"severity": "blocking", "passed": False}],
+                "manual_validator_results": [{"severity": "blocking", "passed": False, "delegable": True, "reviewer": "codex_reviewer"}],
                 "unsupported_validator_results": [],
             }
         ),
@@ -118,7 +118,9 @@ def test_verification_summary_counts_blockers(tmp_path) -> None:
     summary = load_verification_summary(tmp_path)
 
     assert summary is not None
-    assert summary.status == "human_acceptance_required"
+    assert summary.status == "review_required"
     assert summary.hard_failures == 0
     assert summary.manual_blockers == 1
+    assert summary.review_blockers == 1
+    assert summary.human_authority_blockers == 0
     assert not summary.completed_verified

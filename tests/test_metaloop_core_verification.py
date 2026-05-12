@@ -123,7 +123,16 @@ def test_verify_workspace_routes_manual_and_unsupported_blockers(tmp_path) -> No
         [{"type": "manual_acceptance", "mode": "manual", "severity": "blocking", "description": "review boundary"}],
     )
     manual = verify_workspace(tmp_path)
-    assert manual["status"] == "human_acceptance_required"
+    assert manual["status"] == "review_required"
+    assert manual["manual_validator_results"][0]["delegable"] is True
+
+    _write_capsule(
+        tmp_path / "authority",
+        [{"type": "manual_acceptance", "mode": "manual", "severity": "blocking", "description": "user-only boundary", "requires_user_confirmation": True}],
+    )
+    authority = verify_workspace(tmp_path / "authority")
+    assert authority["status"] == "human_acceptance_required"
+    assert authority["manual_validator_results"][0]["delegable"] is False
 
     _write_capsule(
         tmp_path / "other",

@@ -121,10 +121,15 @@ def test_route_next_hop_routes_failed_redesign_to_architect() -> None:
     assert route["next_role"] == "role_architect"
 
 
-def test_route_next_hop_honors_manual_acceptance_and_contract_defect() -> None:
+def test_route_next_hop_honors_user_authority_review_and_contract_defect() -> None:
     acceptance = route_next_hop(
         envelope=_job_envelope(),
         verification_result={"status": "human_acceptance_required"},
+        adaptive_loop=None,
+    )
+    review = route_next_hop(
+        envelope=_job_envelope(),
+        verification_result={"status": "review_required"},
         adaptive_loop=None,
     )
     defect = route_next_hop(
@@ -135,6 +140,8 @@ def test_route_next_hop_honors_manual_acceptance_and_contract_defect() -> None:
 
     assert acceptance["action"] == "suspend"
     assert acceptance["notify"] == "human_operator"
+    assert review["action"] == "suspend"
+    assert review["verification_status"] == "review_required"
     assert defect["action"] == "route_to"
     assert defect["next_role"] == "role_design"
 

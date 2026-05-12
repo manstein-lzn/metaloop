@@ -76,11 +76,11 @@ def test_diagnose_next_routes_manual_and_unsupported_blockers(tmp_path) -> None:
     write_verification_result(
         tmp_path,
         {
-            "status": "human_acceptance_required",
-            "reason": "Manual blocker.",
+            "status": "review_required",
+            "reason": "Review blocker.",
             "hard_validator_results": [],
             "forbidden_path_results": [],
-            "manual_validator_results": [{"severity": "blocking", "passed": False}],
+            "manual_validator_results": [{"severity": "blocking", "passed": False, "delegable": True, "reviewer": "codex_reviewer"}],
             "unsupported_validator_results": [],
         },
     )

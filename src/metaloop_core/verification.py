@@ -19,6 +19,8 @@ class VerificationSummary:
     reason: str
     hard_failures: int
     manual_blockers: int
+    review_blockers: int
+    human_authority_blockers: int
     unsupported_blockers: int
 
     @property
@@ -48,6 +50,8 @@ def summarize_verification_result(payload: dict[str, Any]) -> VerificationSummar
         reason=str(payload.get("reason") or ""),
         hard_failures=sum(1 for item in executable if isinstance(item, dict) and item.get("severity", "blocking") == "blocking" and not item.get("passed")),
         manual_blockers=sum(1 for item in manual_results if isinstance(item, dict) and item.get("severity", "blocking") == "blocking"),
+        review_blockers=sum(1 for item in manual_results if isinstance(item, dict) and item.get("severity", "blocking") == "blocking" and not _requires_human_authority(item)),
+        human_authority_blockers=sum(1 for item in manual_results if isinstance(item, dict) and item.get("severity", "blocking") == "blocking" and _requires_human_authority(item)),
         unsupported_blockers=sum(1 for item in unsupported_results if isinstance(item, dict) and item.get("severity", "blocking") == "blocking"),
     )
 
@@ -84,6 +88,8 @@ def verify_workspace(workspace: str | Path = ".", *, write: bool = True, update_
     executable_results = [*hard_results, *forbidden_results]
     blocking_failures = [item for item in executable_results if item.get("severity") == "blocking" and not item.get("passed")]
     blocking_manual = [item for item in manual_results if item.get("severity") == "blocking"]
+    human_authority_blockers = [item for item in blocking_manual if _requires_human_authority(item)]
+    review_blockers = [item for item in blocking_manual if not _requires_human_authority(item)]
     blocking_unsupported = [item for item in unsupported_results if item.get("severity") == "blocking"]
     review = capsule.get("verification_review", {})
     if isinstance(review, dict) and review.get("known_gaps"):
@@ -95,9 +101,12 @@ def verify_workspace(workspace: str | Path = ".", *, write: bool = True, update_
     elif blocking_unsupported:
         status = "unsupported_verification_spec"
         reason = "One or more blocking validators require unsupported verification."
-    elif blocking_manual:
+    elif human_authority_blockers:
         status = "human_acceptance_required"
-        reason = "One or more blocking validators require human review."
+        reason = "One or more blocking validators require user authority."
+    elif review_blockers:
+        status = "review_required"
+        reason = "One or more blocking validators require independent reviewer judgment."
     elif not executable_results:
         status = "missing_verification_plan"
         reason = "No executable validators found; add executable checks before automated completion."
@@ -137,7 +146,7 @@ def run_verification_spec(
         severity = validator_severity(validator)
         validator_type = str(validator.get("type") or "")
         if mode == "manual":
-            result = manual_result(validator, "manual validator requires human review")
+            result = manual_result(validator, "manual validator requires independent review")
             (warnings if severity == "advisory" else manual_results).append(result)
             continue
         if mode == "unsupported":
@@ -207,10 +216,15 @@ def write_verification_result(workspace: str | Path, result: dict[str, Any]) -> 
 
 
 def manual_result(validator: dict[str, Any], message: str) -> dict[str, Any]:
+    authority = _manual_authority(validator)
     return {
         "type": validator.get("type"),
         "mode": validator_mode(validator),
         "severity": validator_severity(validator),
+        "authority": authority,
+        "delegable": authority != "user",
+        "reviewer": "user" if authority == "user" else str(validator.get("reviewer") or "codex_reviewer"),
+        "requires_user_confirmation": authority == "user",
         "passed": False,
         "message": message,
         "description": validator.get("description", ""),
@@ -229,12 +243,38 @@ def unsupported_result(validator: dict[str, Any], message: str) -> dict[str, Any
 
 
 def resource_gate_result(gate: dict[str, Any]) -> dict[str, Any]:
+    requires_user_confirmation = bool(gate.get("requires_user_confirmation", True))
     return {
         "type": "resource_gate",
         "mode": validator_mode(gate, default="manual"),
         "severity": validator_severity(gate),
+        "authority": "user" if requires_user_confirmation else "reviewer",
+        "delegable": not requires_user_confirmation,
+        "reviewer": "user" if requires_user_confirmation else str(gate.get("reviewer") or "codex_reviewer"),
         "resource": gate.get("resource", ""),
-        "requires_user_confirmation": bool(gate.get("requires_user_confirmation", True)),
+        "requires_user_confirmation": requires_user_confirmation,
         "passed": False,
         "message": gate.get("reason") or "resource gate requires confirmation",
     }
+
+
+def _manual_authority(validator: dict[str, Any]) -> str:
+    if bool(validator.get("requires_user_confirmation", False)):
+        return "user"
+    if str(validator.get("authority") or "").lower() == "user":
+        return "user"
+    if str(validator.get("reviewer") or "").lower() in {"user", "human", "human_operator"}:
+        return "user"
+    if validator.get("delegable") is False:
+        return "user"
+    return "reviewer"
+
+
+def _requires_human_authority(result: dict[str, Any]) -> bool:
+    if bool(result.get("requires_user_confirmation", False)):
+        return True
+    if str(result.get("authority") or "").lower() == "user":
+        return True
+    if str(result.get("reviewer") or "").lower() in {"user", "human", "human_operator"}:
+        return True
+    return result.get("delegable") is False

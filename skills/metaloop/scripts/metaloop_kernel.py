@@ -49,6 +49,7 @@ ROUTABLE_VERIFICATION_STATUSES = {
     "invalid_capsule",
     "missing_execution_report",
     "missing_verification_plan",
+    "review_required",
     "unsupported_verification_spec",
 }
 KNOWN_EXECUTABLE_VALIDATORS = {
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     design_parser.add_argument(
         "--allow-manual-only",
         action="store_true",
-        help="Allow a capsule whose acceptance requires human review and has no executable validators.",
+        help="Allow a capsule whose acceptance requires reviewer or user judgment and has no executable validators.",
     )
     design_parser.add_argument("--revision-reason", help="Reason for replacing an existing locked capsule.")
     design_parser.add_argument("--force", action="store_true", help="Create a new revision when a capsule exists.")
@@ -405,7 +406,7 @@ def _brief_root_summary(root: dict[str, Any]) -> dict[str, Any]:
         "root": root.get("root", ""),
         "node_count": root.get("node_count", 0),
         "status_counts": root.get("status_counts", {}),
-        "blocked_count": len([node for node in nodes if node.get("waiting_on") or node.get("status") in {"blocked", "human_acceptance_required"}]),
+        "blocked_count": len([node for node in nodes if node.get("waiting_on") or node.get("status") in {"blocked", "human_acceptance_required", "review_required"}]),
         "outbox_count": root.get("outbox_count", 0),
         "inbox_count": root.get("inbox_count", 0),
         "nodes": nodes,
@@ -436,7 +437,9 @@ def _brief_next_action(node: dict[str, Any]) -> str:
         return "Process pending control intent at the next safe point."
     waiting_on = str(node.get("waiting_on") or "")
     if waiting_on == "human_acceptance":
-        return "Request explicit human acceptance or revise manual gate."
+        return "Request explicit user authority or revise manual gate."
+    if waiting_on == "review":
+        return "Ask a Codex reviewer to inspect locked evidence and record the review outcome."
     if waiting_on == "execution":
         return "Run the next attempt and write ExecutionReport evidence."
     if waiting_on == "design":
@@ -1165,6 +1168,8 @@ def _verify(workspace: Path, *, as_json: bool) -> int:
     all_executable_results = [*hard_results, *forbidden_results]
     blocking_failures = [result for result in all_executable_results if result.get("severity") == "blocking" and not result.get("passed")]
     blocking_manual = [result for result in manual_results if result.get("severity") == "blocking"]
+    human_authority_blockers = [result for result in blocking_manual if _requires_human_authority(result)]
+    review_blockers = [result for result in blocking_manual if not _requires_human_authority(result)]
     blocking_unsupported = [result for result in unsupported_results if result.get("severity") == "blocking"]
     review = capsule.get("verification_review", {})
     if review.get("known_gaps"):
@@ -1176,9 +1181,12 @@ def _verify(workspace: Path, *, as_json: bool) -> int:
     elif blocking_unsupported:
         status = "unsupported_verification_spec"
         reason = "One or more blocking validators require unsupported verification."
-    elif blocking_manual:
+    elif human_authority_blockers:
         status = "human_acceptance_required"
-        reason = "One or more blocking validators require human review."
+        reason = "One or more blocking validators require user authority."
+    elif review_blockers:
+        status = "review_required"
+        reason = "One or more blocking validators require independent reviewer judgment."
     elif not all_executable_results:
         status = "missing_verification_plan"
         reason = "No executable validators found; add executable checks before automated completion."
@@ -1313,7 +1321,7 @@ def _run_verification_spec(
         severity = _validator_severity(validator)
         validator_type = str(validator.get("type") or "")
         if mode == "manual":
-            result = _manual_result(validator, "manual validator requires human review")
+            result = _manual_result(validator, "manual validator requires independent review")
             (warnings if severity == "advisory" else manual_results).append(result)
             continue
         if mode == "unsupported":
@@ -1406,10 +1414,15 @@ def _run_artifact_hash(workspace: Path, validator: dict[str, Any]) -> dict[str, 
 
 
 def _manual_result(validator: dict[str, Any], message: str) -> dict[str, Any]:
+    authority = _manual_authority(validator)
     return {
         "type": validator.get("type"),
         "mode": _validator_mode(validator),
         "severity": _validator_severity(validator),
+        "authority": authority,
+        "delegable": authority != "user",
+        "reviewer": "user" if authority == "user" else str(validator.get("reviewer") or "codex_reviewer"),
+        "requires_user_confirmation": authority == "user",
         "passed": False,
         "message": message,
         "description": validator.get("description", ""),
@@ -1428,15 +1441,41 @@ def _unsupported_result(validator: dict[str, Any], message: str) -> dict[str, An
 
 
 def _resource_gate_result(gate: dict[str, Any]) -> dict[str, Any]:
+    requires_user_confirmation = bool(gate.get("requires_user_confirmation", True))
     return {
         "type": "resource_gate",
         "mode": _validator_mode(gate, default="manual"),
         "severity": _validator_severity(gate),
+        "authority": "user" if requires_user_confirmation else "reviewer",
+        "delegable": not requires_user_confirmation,
+        "reviewer": "user" if requires_user_confirmation else str(gate.get("reviewer") or "codex_reviewer"),
         "resource": gate.get("resource", ""),
-        "requires_user_confirmation": bool(gate.get("requires_user_confirmation", True)),
+        "requires_user_confirmation": requires_user_confirmation,
         "passed": False,
         "message": gate.get("reason") or "resource gate requires confirmation",
     }
+
+
+def _manual_authority(validator: dict[str, Any]) -> str:
+    if bool(validator.get("requires_user_confirmation", False)):
+        return "user"
+    if str(validator.get("authority") or "").lower() == "user":
+        return "user"
+    if str(validator.get("reviewer") or "").lower() in {"user", "human", "human_operator"}:
+        return "user"
+    if validator.get("delegable") is False:
+        return "user"
+    return "reviewer"
+
+
+def _requires_human_authority(result: dict[str, Any]) -> bool:
+    if bool(result.get("requires_user_confirmation", False)):
+        return True
+    if str(result.get("authority") or "").lower() == "user":
+        return True
+    if str(result.get("reviewer") or "").lower() in {"user", "human", "human_operator"}:
+        return True
+    return result.get("delegable") is False
 
 
 def _run_command(workspace: Path, command: str, *, timeout: int) -> dict[str, Any]:
@@ -1525,7 +1564,7 @@ def _observe_root(root: Path) -> dict[str, Any]:
         "root": str(root),
         "node_count": len(nodes),
         "status_counts": counts,
-        "blocked_nodes": [node for node in nodes if node.get("status") in {"blocked", "human_acceptance_required"} or node.get("waiting_on")],
+        "blocked_nodes": [node for node in nodes if node.get("status") in {"blocked", "human_acceptance_required", "review_required"} or node.get("waiting_on")],
         "outbox_count": sum(int(node.get("outbox_count") or 0) for node in nodes),
         "inbox_count": sum(int(node.get("inbox_count") or 0) for node in nodes),
         "nodes": nodes,
@@ -1749,9 +1788,11 @@ def _next_action(status: dict[str, Any]) -> str:
     if verification_status == "missing_verification_plan":
         return "Add executable validators before claiming automated completion."
     if verification_status == "human_acceptance_required":
-        return "Ask the user for manual acceptance or revise acceptance criteria."
+        return "Ask the user for required authority or revise acceptance criteria."
+    if verification_status == "review_required":
+        return "Ask a Codex reviewer to inspect locked evidence and record the review outcome."
     if verification_status == "completed_verified":
-        return "Complete or ask for final human acceptance."
+        return "Complete or ask for any final explicitly required acceptance."
     if verification_status == "failed":
         return "Classify as repair or redesign before continuing."
     return "Execute with Codex around the locked Mission Capsule, then verify."
@@ -2576,6 +2617,8 @@ def _verification_summary(verification: Any) -> dict[str, Any] | None:
         "reason": str(verification.get("reason") or ""),
         "hard_failures": _count_failed(verification.get("hard_validator_results")),
         "manual_blockers": _count_blocking(verification.get("manual_validator_results")),
+        "review_blockers": _count_review_blocking(verification.get("manual_validator_results")),
+        "human_authority_blockers": _count_human_authority_blocking(verification.get("manual_validator_results")),
         "unsupported_blockers": _count_blocking(verification.get("unsupported_validator_results")),
     }
 
@@ -2586,6 +2629,8 @@ def _summary_waiting_on(verification: Any, pending_controls: list[str]) -> str:
     status = str(verification.get("status") or "") if isinstance(verification, dict) else ""
     if status == "human_acceptance_required":
         return "human_acceptance"
+    if status == "review_required":
+        return "review"
     if status in {"missing_execution_report", "execution_incomplete"}:
         return "execution"
     if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
@@ -2605,6 +2650,18 @@ def _count_blocking(items: Any) -> int:
     if not isinstance(items, list):
         return 0
     return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False)
+
+
+def _count_review_blocking(items: Any) -> int:
+    if not isinstance(items, list):
+        return 0
+    return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False and not _requires_human_authority(item))
+
+
+def _count_human_authority_blocking(items: Any) -> int:
+    if not isinstance(items, list):
+        return 0
+    return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False and _requires_human_authority(item))
 
 
 def _nested_string(payload: Any, keys: list[str]) -> str:
@@ -2774,7 +2831,9 @@ def _route_next_hop(envelope: dict[str, Any], verification: dict[str, Any] | Non
     if status == "completed_verified":
         return {**base, **_policy_action(policy, "on_success", "Completed verified; dispatching according to policy.")}
     if status == "human_acceptance_required":
-        return {**base, **_policy_action(policy, "on_human_acceptance", "Human acceptance is required.")}
+        return {**base, **_policy_action(policy, "on_human_acceptance", "User authority is required.")}
+    if status == "review_required":
+        return {**base, **_policy_action(policy, "on_review_required", "Independent Codex reviewer judgment is required.", fallback_key="on_human_acceptance")}
     if status in {"missing_execution_report", "execution_incomplete"}:
         return {**base, "action": "wait", "reason": "Execution has not produced a completed report yet."}
     if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
@@ -3042,6 +3101,8 @@ def _validate_job_envelope(payload: Any) -> list[str]:
             for key in ["on_success", "on_repair", "on_redesign", "on_blocked", "on_human_acceptance", "on_contract_defect"]:
                 if not isinstance(policy.get(key), dict):
                     errors.append(f"contract.handoff_policy.{key} must be an object")
+            if "on_review_required" in policy and not isinstance(policy.get("on_review_required"), dict):
+                errors.append("contract.handoff_policy.on_review_required must be an object")
     if isinstance(payload.get("envelope_hash"), str) and payload.get("envelope_hash") != _job_envelope_hash(payload):
         errors.append("envelope_hash does not match envelope content")
     return errors
@@ -3061,8 +3122,12 @@ def _latest_adaptive_decision(state: dict[str, Any] | None) -> str:
     return decision if isinstance(decision, str) and decision in ADAPTIVE_DECISIONS else ""
 
 
-def _policy_action(policy: dict[str, Any], key: str, reason: str) -> dict[str, Any]:
-    item = policy.get(key, {})
+def _policy_action(policy: dict[str, Any], key: str, reason: str, *, fallback_key: str | None = None) -> dict[str, Any]:
+    item = policy.get(key)
+    if not isinstance(item, dict) and fallback_key is not None:
+        item = policy.get(fallback_key)
+    if not isinstance(item, dict):
+        item = {}
     action = item.get("action")
     result = {"action": action if action in ROUTE_ACTIONS else "error", "reason": reason}
     for target_key in ["target", "target_role", "next_role", "notify"]:

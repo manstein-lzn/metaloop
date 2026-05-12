@@ -65,7 +65,7 @@ def test_observe_node_summarizes_metaloop_artifacts_without_writing(tmp_path) ->
 def test_observe_root_summarizes_multiple_nodes(tmp_path) -> None:
     node_a = tmp_path / "architect"
     node_b = tmp_path / "ml_engineer"
-    for node, status in [(node_a, "completed_verified"), (node_b, "human_acceptance_required")]:
+    for node, status in [(node_a, "completed_verified"), (node_b, "review_required")]:
         metaloop_dir = node / ".metaloop"
         metaloop_dir.mkdir(parents=True)
         (metaloop_dir / "verification_result.json").write_text(json.dumps({"status": status}), encoding="utf-8")
@@ -75,6 +75,6 @@ def test_observe_root_summarizes_multiple_nodes(tmp_path) -> None:
     assert summary["schema"] == "metaloop.global_summary"
     assert summary["node_count"] == 2
     assert summary["status_counts"]["completed_verified"] == 1
-    assert summary["status_counts"]["human_acceptance_required"] == 1
+    assert summary["status_counts"]["review_required"] == 1
     assert len(summary["blocked_nodes"]) == 1
-    assert summary["blocked_nodes"][0]["waiting_on"] == "human_acceptance"
+    assert summary["blocked_nodes"][0]["waiting_on"] == "review"

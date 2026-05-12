@@ -86,7 +86,7 @@ def observe_root(root: str | Path) -> dict[str, Any]:
         "root": str(base),
         "node_count": len(nodes),
         "status_counts": counts,
-        "blocked_nodes": [node for node in nodes if node.get("status") in {"blocked", "human_acceptance_required"} or node.get("waiting_on")],
+        "blocked_nodes": [node for node in nodes if node.get("status") in {"blocked", "human_acceptance_required", "review_required"} or node.get("waiting_on")],
         "outbox_count": sum(int(node.get("outbox_count") or 0) for node in nodes),
         "inbox_count": sum(int(node.get("inbox_count") or 0) for node in nodes),
         "nodes": nodes,
@@ -180,6 +180,8 @@ def _verification_summary(verification: dict[str, Any] | None) -> dict[str, Any]
         "reason": _string(verification.get("reason")),
         "hard_failures": _count_failed(verification.get("hard_validator_results")),
         "manual_blockers": _count_blocking(verification.get("manual_validator_results")),
+        "review_blockers": _count_review_blocking(verification.get("manual_validator_results")),
+        "human_authority_blockers": _count_human_authority_blocking(verification.get("manual_validator_results")),
         "unsupported_blockers": _count_blocking(verification.get("unsupported_validator_results")),
     }
 
@@ -190,6 +192,8 @@ def _waiting_on(verification: dict[str, Any] | None, pending_controls: list[str]
     status = _string(verification.get("status")) if isinstance(verification, dict) else ""
     if status == "human_acceptance_required":
         return "human_acceptance"
+    if status == "review_required":
+        return "review"
     if status in {"missing_execution_report", "execution_incomplete"}:
         return "execution"
     if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
@@ -211,6 +215,28 @@ def _count_blocking(items: Any) -> int:
     if not isinstance(items, list):
         return 0
     return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False)
+
+
+def _count_review_blocking(items: Any) -> int:
+    if not isinstance(items, list):
+        return 0
+    return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False and not _requires_human_authority(item))
+
+
+def _count_human_authority_blocking(items: Any) -> int:
+    if not isinstance(items, list):
+        return 0
+    return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False and _requires_human_authority(item))
+
+
+def _requires_human_authority(item: dict[str, Any]) -> bool:
+    if bool(item.get("requires_user_confirmation", False)):
+        return True
+    if _string(item.get("authority")).lower() == "user":
+        return True
+    if _string(item.get("reviewer")).lower() in {"user", "human", "human_operator"}:
+        return True
+    return item.get("delegable") is False
 
 
 def _context_file_state(summary: dict[str, Any], name: str) -> dict[str, Any] | None:

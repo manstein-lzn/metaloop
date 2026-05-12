@@ -68,7 +68,7 @@ python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
 Common causes:
 
 - `job_envelope.json` is missing or has a stale `envelope_hash`.
-- `.metaloop/verification_result.json` is missing, failed without an adaptive decision, or requires human acceptance.
+- `.metaloop/verification_result.json` is missing, failed without an adaptive decision, requires Codex reviewer judgment, or requires user authority.
 - `.metaloop/outbox/<target>.json` was written, but `dispatch_map.json` lacks that target.
 - the dispatch route has no explicit envelope template, so relay returns `needs_design`.
 - the target workspace path is wrong.

@@ -54,6 +54,7 @@ ROUTABLE_VERIFICATION_STATUSES = {
     "invalid_capsule",
     "missing_execution_report",
     "missing_verification_plan",
+    "review_required",
     "unsupported_verification_spec",
 }
 

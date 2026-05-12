@@ -125,7 +125,8 @@ Verifier behavior:
 
 ```text
 executable + blocking + failed -> failed
-manual + blocking -> human_acceptance_required
+manual + blocking + delegatable -> review_required
+manual + blocking + user authority -> human_acceptance_required
 unsupported + blocking -> unsupported_verification_spec
 advisory unresolved/failed -> warning, never hard proof
 ```
@@ -195,7 +196,8 @@ The kernel may only execute bundled generic validators for now, but the protocol
 - malformed or missing validator `mode` / `severity` is rejected before lock.
 - validators outside the locked ExtensionSpec language are rejected before lock.
 - declared but unimplemented executable blocking validator returns `unsupported_verification_spec`.
-- declared manual blocking validator returns `human_acceptance_required`.
+- declared delegatable manual blocking validator returns `review_required`.
+- declared user-authority manual blocking validator returns `human_acceptance_required`.
 - advisory failed/unsupported validators appear in warnings.
 - `json_field_exists`, `file_contains`, and `artifact_hash` work.
 - `resource_gate requires_user_confirmation` blocks hard completion.

@@ -150,6 +150,16 @@ For metric, benchmark, research, promotion, or quality-breakthrough tasks,
 `file_exists` is not enough. Add metric gates, baseline comparisons, resource
 gates, forbidden claims, attempt evidence, or blocking manual review.
 
+Blocking review has two statuses:
+
+- `review_required`: quality, evidence, claim, or domain judgment can be
+  delegated to an independent Codex reviewer. The worker may not self-approve;
+  a reviewer must inspect locked evidence and record the outcome.
+- `human_acceptance_required`: user-only authority is required. Do not delegate
+  cost, resource, destructive action, external publication, official
+  promotion, credential, legal, or explicitly non-delegable decisions unless
+  the user has explicitly delegated that authority.
+
 For observability, prefer read-only summaries from `.metaloop/` artifacts. For
 control, write explicit intent files under `.metaloop/control/`; do not make a
 dashboard or observer silently route work, approve resources, or mutate locked
@@ -192,8 +202,8 @@ Verification is part of the prompt, not an afterthought.
 
 After each attempt, classify the state before acting:
 
-- `complete`: locked verification passed and human acceptance is satisfied or
-  pending.
+- `complete`: locked verification passed and any required reviewer or user
+  authority gate is satisfied or explicitly pending.
 - `continue`: the goal is valid and another high-signal attempt is justified.
 - `repair`: the contract is right; implementation is defective.
 - `redesign`: scope, acceptance, authority, or VerificationSpec is wrong or
@@ -218,7 +228,8 @@ decision, and next plan before another attempt.
   carry hashes.
 - Verification requires a valid ExecutionReport.
 - Manual or unsupported blocking validators cannot become hard verified
-  completion.
+  completion. Delegatable manual review is `review_required`; user authority is
+  `human_acceptance_required`.
 - Replacing a locked capsule requires a revision reason and archives the
   previous capsule.
 - Do not build a parallel state system outside `.metaloop/`.

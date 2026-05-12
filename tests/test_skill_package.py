@@ -933,7 +933,7 @@ def test_bundled_skill_kernel_does_not_hard_verify_manual_only_acceptance(tmp_pa
         check=False,
     )
     assert verify_with_manual_acceptance.returncode == 1
-    assert "verification: human_acceptance_required" in verify_with_manual_acceptance.stdout
+    assert "verification: review_required" in verify_with_manual_acceptance.stdout
 
 
 def test_bundled_skill_kernel_supports_locked_json_metric_verification_spec(tmp_path) -> None:
@@ -1094,8 +1094,9 @@ def test_bundled_skill_kernel_extension_spec_modes_and_revision(tmp_path) -> Non
     )
     assert verify.returncode == 1
     result = json.loads(verify.stdout)
-    assert result["status"] == "human_acceptance_required"
+    assert result["status"] == "review_required"
     assert result["manual_validator_results"][0]["type"] == "domain_manual_gate"
+    assert result["manual_validator_results"][0]["reviewer"] == "codex_reviewer"
     assert result["warnings"][0]["type"] == "known_gap"
 
     capsule["extension_spec"]["purpose"] = "tampered"

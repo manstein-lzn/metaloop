@@ -89,6 +89,8 @@ def observe_workspace(workspace: str | Path = ".", *, write: bool = False) -> di
         signals["verification_status"] = verification.status
         signals["hard_failures"] = verification.hard_failures
         signals["manual_blockers"] = verification.manual_blockers
+        signals["review_blockers"] = verification.review_blockers
+        signals["human_authority_blockers"] = verification.human_authority_blockers
         signals["unsupported_blockers"] = verification.unsupported_blockers
 
     if execution is None and verification is None:
@@ -125,7 +127,7 @@ def diagnose_next(observation: dict[str, Any], *, next_plan: str = "") -> dict[s
     if status == "satisfied":
         evaluation_status = "satisfied"
         diagnosis = "Locked verification gates are satisfied."
-        default_next_plan = "Ask for final human acceptance or close the loop."
+        default_next_plan = "Ask for any explicitly required final acceptance or close the loop."
     elif status == "missing_feedback":
         evaluation_status = "unknown"
         diagnosis = "The loop lacks observable feedback; execution and verification must run before reliable control decisions."
@@ -139,10 +141,15 @@ def diagnose_next(observation: dict[str, Any], *, next_plan: str = "") -> dict[s
         diagnosis = "A blocking validator requires unsupported verification capability."
         default_next_plan = "Add extension support or redesign the unsupported verification gate."
         default_decision = "escalate"
-    elif signals.get("manual_blockers", 0) > 0:
+    elif signals.get("human_authority_blockers", 0) > 0:
         evaluation_status = "blocked"
-        diagnosis = "A blocking validator requires human or reviewer judgment."
-        default_next_plan = "Escalate for manual review or revise acceptance through redesign."
+        diagnosis = "A blocking validator requires user authority."
+        default_next_plan = "Escalate for user authorization or revise acceptance through redesign."
+        default_decision = "escalate"
+    elif signals.get("review_blockers", 0) > 0 or signals.get("manual_blockers", 0) > 0:
+        evaluation_status = "blocked"
+        diagnosis = "A blocking validator requires independent reviewer judgment."
+        default_next_plan = "Ask a Codex reviewer to inspect the locked evidence and record the review outcome."
         default_decision = "escalate"
     elif signals.get("hard_failures", 0) > 0:
         evaluation_status = "not_satisfied"

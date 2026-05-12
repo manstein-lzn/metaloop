@@ -131,7 +131,7 @@ When output is unsatisfactory, classify before executing:
 - `repair`: correct contract, defective implementation
 - `redesign`: incorrect/incomplete contract, scope, authority, or acceptance
 - `resume`: incomplete work, direction still valid
-- `complete`: verification passed and human acceptance is satisfied or pending
+- `complete`: verification passed and any explicitly required reviewer or user acceptance is satisfied or pending
 
 Never let a worker repair silently mutate locked contract boundaries.
 
