@@ -113,5 +113,9 @@ Events do not change locked contracts and do not prove completion. They are the 
 - Do not let worker threads modify locked verification after seeing results.
 - Do not let a worker thread approve its own `review_required` gate; use an
   independent reviewer thread and record `review_result.json`.
+- For research, benchmark, reproduction, paper-claim, promotion, or leaderboard
+  claims, use `review_required` by default for final claim validation and
+  prefer an independent Codex reviewer thread unless the user explicitly opts
+  out.
 - Do not use `file_exists` alone for metric, benchmark, promotion, or research breakthrough tasks.
 - If the core metric gate fails, report target failure even when artifacts were produced.

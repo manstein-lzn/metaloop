@@ -151,6 +151,10 @@ For metric, benchmark, research, promotion, or quality-breakthrough tasks,
 `file_exists` is not enough. Add metric gates, baseline comparisons, resource
 gates, forbidden claims, attempt evidence, or blocking manual review.
 
+For research, benchmark, reproduction, paper-claim, promotion, or leaderboard
+claims, use `review_required` by default for final claim validation and prefer
+an independent Codex reviewer thread unless the user explicitly opts out.
+
 Validator quality ladder:
 
 - Strong: metric gates, schema/field checks, command tests, artifact hashes,

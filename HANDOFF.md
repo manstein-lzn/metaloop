@@ -68,6 +68,7 @@ Codex conversation
 - `scripts/metaloop_dashboard.py` 是只读 localhost dashboard；不要给它增加写 control、activate、relay、edit artifact 等 mutation endpoint。
 - Context checkpoints 支持 `.metaloop/context/resume_brief.md` 等轻量 Markdown 恢复摘要，解决长期 Codex thread 上下文膨胀后的接手问题。
 - `review_required` 不等于用户授权。它应由独立 Codex reviewer 检查证据并通过 `review record` 写 `.metaloop/review_result.json`。`human_acceptance_required` 才是用户专属授权。
+- 研究、benchmark、复现、论文结论、promotion 或 leaderboard claim 默认应给最终 claim validation 加 `review_required`，除非用户明确 opt out。
 
 ## 运行验证
 

@@ -163,6 +163,9 @@ Task-specific extension specs must include risk coverage before lock:
 - `risk_checks` or `review_questions` must be non-empty for non-generic domains.
 - known gaps must be recorded and surfaced in VerificationResult.
 - no validator may be silently upgraded from manual/unsupported to hard verified.
+- research, benchmark, reproduction, paper-claim, promotion, or leaderboard
+  claims should include a final delegatable `review_required` gate by default,
+  unless the user explicitly opts out.
 - delegatable manual gates are resolved only by `.metaloop/review_result.json`.
 - review results must match the current capsule id, capsule revision, and
   VerificationSpec hash.
