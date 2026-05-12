@@ -15,8 +15,9 @@ Worker acts at safe points.
 Kernel verifies outcome.
 ```
 
-Observability is read-only. Control is explicit. Workers and optional
-activators decide when it is safe to act on control files.
+Observability is read-only. Control is explicit. Optional activation is
+one-shot and auditable. Workers and optional activators decide when it is safe
+to act on control files.
 
 ## Read-Only Observability
 
@@ -44,6 +45,30 @@ from metaloop_core import observe_node, observe_root
 
 Recommended first UI: a read-only dashboard or terminal command that renders
 these summaries.
+
+## Optional Activation
+
+Activation is the smallest automation layer that can remove the user from
+routine handoffs without creating a hidden scheduler. It scans node workspaces
+once, checks `job_envelope.json`, pending `.metaloop/control/*.json`, and an
+activation lease, writes `.metaloop/activation_result.json`, and exits.
+
+The core API is:
+
+```python
+from metaloop_core import activate_once, plan_activation
+```
+
+The bundled skill kernel exposes:
+
+```bash
+python3 "$KERNEL" --workspace . activate --root . --worker-command "<explicit command>"
+```
+
+Without `--execute`, activation is dry-run. With `--execute`, it runs only the
+explicit worker command supplied by the caller. It does not call Codex by
+itself, design tasks, interpret metrics, route work, approve resources, mutate
+Mission Capsules, or change locked VerificationSpecs.
 
 ## Explicit Control Files
 

@@ -47,6 +47,7 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "Do not use routable work units just because a task is large" in skill
     assert "read-only summaries" in skill
     assert ".metaloop/control/" in skill
+    assert "activate" in skill
     assert "do not make a" in skill
     assert "dashboard or observer silently route work" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
@@ -126,6 +127,7 @@ def test_observability_control_doc_is_linked_and_read_only() -> None:
     assert ".metaloop/control/" in doc
     assert "It does not directly kill" in doc
     assert "processes or modify Mission Capsules." in doc
+    assert "activation" in doc
 
 
 def test_metaloop_skill_contains_generic_extension_package() -> None:
@@ -316,6 +318,110 @@ def test_bundled_skill_kernel_tick_and_relay_routable_work_unit(tmp_path) -> Non
     assert target_envelope["parent_job_id"] == "job-source-001"
     assert target_envelope["assigned_role"] == "target_role"
     assert (target / ".metaloop" / "inbox" / "job-source-001.json").exists()
+
+
+def test_bundled_skill_kernel_observe_control_and_activate(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+    node = tmp_path / "node"
+    node.mkdir()
+    envelope = _hashed_envelope(
+        {
+            "schema": "metaloop.job_envelope",
+            "version": "1.0",
+            "job_id": "job-activation-001",
+            "parent_job_id": None,
+            "created_at": "2026-05-12T00:00:00Z",
+            "assigned_role": "worker",
+            "attempt": 1,
+            "retry_count": 0,
+            "policy_version": "1.0",
+            "intent": {
+                "commander_intent": "Handle the delivered work unit.",
+                "global_blackboard_ref": "./global_blackboard.json",
+                "blackboard_hash": "sha256:source",
+            },
+            "payload": {},
+            "contract": {
+                "expected_outputs": [{"path": "result.json", "kind": "artifact", "hash": "sha256:result"}],
+                "handoff_policy": {
+                    "on_success": {"action": "dispatch", "next_role": "reviewer"},
+                    "on_repair": {"action": "loop_back", "max_retries": 3},
+                    "on_redesign": {"action": "route_to", "next_role": "designer"},
+                    "on_blocked": {"action": "escalate", "notify": "human_operator"},
+                    "on_human_acceptance": {"action": "suspend", "notify": "human_operator"},
+                    "on_contract_defect": {"action": "route_to", "next_role": "designer"},
+                },
+            },
+        }
+    )
+    (node / "job_envelope.json").write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+
+    observe = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(node), "observe", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert observe.returncode == 0, observe.stderr
+    summary = json.loads(observe.stdout)
+    assert summary["schema"] == "metaloop.node_summary"
+    assert summary["node_id"] == "job-activation-001"
+    assert summary["goal"] == "Handle the delivered work unit."
+
+    activate_dry_run = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "activate", "--worker-command", "printf started > marker.txt", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert activate_dry_run.returncode == 0, activate_dry_run.stderr
+    activation = json.loads(activate_dry_run.stdout)
+    assert activation["schema"] == "metaloop.activation_result"
+    assert activation["dry_run"] is True
+    assert activation["counts"]["ready"] == 1
+    assert not (node / "marker.txt").exists()
+
+    control = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(node),
+            "control",
+            "write",
+            "--type",
+            "halt",
+            "--reason",
+            "Pause before starting the next attempt.",
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert control.returncode == 0, control.stderr
+    assert json.loads(control.stdout)["schema"] == "metaloop.control_request"
+
+    blocked = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "activate",
+            "--worker-command",
+            "printf started > marker.txt",
+            "--execute",
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert blocked.returncode == 0, blocked.stderr
+    blocked_result = json.loads(blocked.stdout)
+    assert blocked_result["counts"]["blocked_by_control"] == 1
+    assert not (node / "marker.txt").exists()
 
 
 def test_bundled_skill_kernel_tracks_persistent_agent_threads(tmp_path) -> None:

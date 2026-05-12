@@ -8,6 +8,7 @@ from typing import Any
 from metaloop_core.event_log import EventLog
 from metaloop_core.ids import utc_now
 from metaloop_core.schemas import GLOBAL_SUMMARY_SCHEMA, NODE_SUMMARY_SCHEMA
+from metaloop_core.control import pending_control_requests
 
 
 def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
@@ -27,8 +28,7 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
     latest_event = events[-1] if events else None
     outbox_count = _count_json_files(metaloop_dir / "outbox")
     inbox_count = _count_json_files(metaloop_dir / "inbox")
-    control_dir = metaloop_dir / "control"
-    pending_controls = sorted(path.stem for path in control_dir.glob("*.json")) if control_dir.exists() else []
+    pending_controls = sorted(str(item.get("type") or "") for item in pending_control_requests(root))
 
     return {
         "schema": NODE_SUMMARY_SCHEMA,

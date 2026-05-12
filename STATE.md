@@ -61,6 +61,7 @@ Codex agent conversation
 - `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
 - `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
 - `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
+- `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
 
 ## 当前测试目标
 
@@ -88,3 +89,4 @@ git diff --check
 - 不要为每个有用推理模式新增 Python 模块。
 - 不要在没有真实需求前添加重型 scheduler、agent pool 或领域专用框架。
 - 不要把任何具体项目、数据集、指标或业务逻辑写进 MetaLoop core 或 skill；这些只应出现在目标项目自己的 ExtensionSpec、VerificationSpec、capsule、blackboard 或模板里。
+- 不要把 activation 扩展成常驻 watcher、daemon 或隐藏执行器；它仍然必须是 one-shot、可审计、可停止的薄层。

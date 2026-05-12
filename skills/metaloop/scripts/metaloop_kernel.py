@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,11 @@ GLOBAL_BLACKBOARD_SCHEMA = "metaloop.global_blackboard"
 TICK_RESULT_SCHEMA = "metaloop.tick_result"
 DISPATCH_MAP_SCHEMA = "metaloop.dispatch_map"
 RELAY_RESULT_SCHEMA = "metaloop.relay_result"
+NODE_SUMMARY_SCHEMA = "metaloop.node_summary"
+GLOBAL_SUMMARY_SCHEMA = "metaloop.global_summary"
+CONTROL_REQUEST_SCHEMA = "metaloop.control_request"
+ACTIVATION_RESULT_SCHEMA = "metaloop.activation_result"
+ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
@@ -58,6 +63,7 @@ KNOWN_MANUAL_VALIDATORS = {"forbidden_claim", "manual_acceptance", "resource_gat
 KNOWN_VALIDATORS = KNOWN_EXECUTABLE_VALIDATORS | KNOWN_MANUAL_VALIDATORS
 MODES = {"executable", "manual", "unsupported"}
 SEVERITIES = {"blocking", "advisory"}
+CONTROL_TYPES = {"halt", "resource_approval", "inject_fact", "revise_contract_request"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +73,33 @@ def main(argv: list[str] | None = None) -> int:
 
     status_parser = subparsers.add_parser("status", help="Inspect lightweight MetaLoop state.")
     status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    observe_parser = subparsers.add_parser("observe", help="Print read-only node or root summaries.")
+    observe_parser.add_argument("--scope", choices=["node", "root"], default="node", help="Observe one node or a root containing node workspaces.")
+    observe_parser.add_argument("--root", help="Root path for --scope root. Defaults to --workspace.")
+    observe_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    control_parser = subparsers.add_parser("control", help="Write or inspect explicit control intent files.")
+    control_subparsers = control_parser.add_subparsers(dest="control_command", required=True)
+
+    control_write_parser = control_subparsers.add_parser("write", help="Write one .metaloop/control/*.json request.")
+    control_write_parser.add_argument("--type", required=True, choices=sorted(CONTROL_TYPES), help="Control request type.")
+    control_write_parser.add_argument("--reason", required=True, help="Why this control is requested.")
+    control_write_parser.add_argument("--created-by", default="human", help="Actor writing the request.")
+    control_write_parser.add_argument("--payload-json", default="{}", help="Optional JSON object payload.")
+    control_write_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    control_list_parser = control_subparsers.add_parser("list", help="List control files for this workspace.")
+    control_list_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    activate_parser = subparsers.add_parser("activate", help="Run one bounded activation scan and exit.")
+    activate_parser.add_argument("--root", help="Root containing node workspaces. Defaults to --workspace.")
+    activate_parser.add_argument("--worker-command", default="", help="Explicit command to run in ready node workspaces.")
+    activate_parser.add_argument("--execute", action="store_true", help="Run the worker command. Without this, activation is dry-run.")
+    activate_parser.add_argument("--timeout", type=int, default=600, help="Timeout per worker command in seconds.")
+    activate_parser.add_argument("--lease-seconds", type=int, default=3600, help="Activation lease duration.")
+    activate_parser.add_argument("--max-activations", type=int, default=1, help="Maximum ready nodes to execute in this pass.")
+    activate_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
     design_parser = subparsers.add_parser("design", help="Write a locked lightweight Mission Capsule.")
     design_parser.add_argument("--intent", required=True, help="Clarified user intent.")
@@ -197,6 +230,12 @@ def main(argv: list[str] | None = None) -> int:
     workspace = Path(args.workspace).expanduser().resolve()
     if args.command == "status":
         return _status(workspace, as_json=args.json)
+    if args.command == "observe":
+        return _observe(workspace, args)
+    if args.command == "control":
+        return _control(workspace, args)
+    if args.command == "activate":
+        return _activate(workspace, args)
     if args.command == "design":
         return _design(workspace, args)
     if args.command == "run":
@@ -233,6 +272,126 @@ def _status(workspace: Path, *, as_json: bool) -> int:
     print(f"events: {status['events']['state']} count={status['events'].get('count', 0)}")
     print(f"next_action: {status['next_action']}")
     return 0
+
+
+def _observe(workspace: Path, args: argparse.Namespace) -> int:
+    if args.scope == "root":
+        root = Path(args.root).expanduser().resolve() if args.root else workspace
+        payload = _observe_root(root)
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 0
+        print(f"root: {payload['root']}")
+        print(f"nodes: {payload['node_count']}")
+        print(f"outbox: {payload['outbox_count']} inbox: {payload['inbox_count']}")
+        for node in payload["nodes"]:
+            waiting = f" waiting_on={node.get('waiting_on')}" if node.get("waiting_on") else ""
+            print(f"- {node.get('node_id')}: status={node.get('status')}{waiting} workspace={node.get('workspace')}")
+        return 0
+    payload = _observe_node(workspace)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"node: {payload['node_id']}")
+    print(f"workspace: {payload['workspace']}")
+    print(f"status: {payload['status']}")
+    print(f"goal: {payload.get('goal') or '-'}")
+    print(f"current_plan: {payload.get('current_plan') or '-'}")
+    print(f"waiting_on: {payload.get('waiting_on') or '-'}")
+    print(f"outbox: {payload['outbox_count']} inbox: {payload['inbox_count']}")
+    return 0
+
+
+def _control(workspace: Path, args: argparse.Namespace) -> int:
+    if args.control_command == "write":
+        return _control_write(workspace, args)
+    if args.control_command == "list":
+        return _control_list(workspace, as_json=args.json)
+    return 2
+
+
+def _control_write(workspace: Path, args: argparse.Namespace) -> int:
+    reason = args.reason.strip()
+    if not reason:
+        print("control_invalid: --reason must be non-empty", file=sys.stderr)
+        return 1
+    payload = _parse_control_payload(args.payload_json)
+    if not isinstance(payload, dict):
+        print("control_invalid: --payload-json must be a JSON object", file=sys.stderr)
+        return 1
+    request = {
+        "schema": CONTROL_REQUEST_SCHEMA,
+        "version": "1.0",
+        "control_id": _new_id("control"),
+        "created_at": _now(),
+        "created_by": args.created_by.strip() or "human",
+        "type": args.type,
+        "reason": reason,
+        "payload": payload,
+        "status": "pending",
+    }
+    path = _control_request_path(workspace, args.type)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(request, indent=2, ensure_ascii=False), encoding="utf-8")
+    _append_event(
+        workspace,
+        {
+            "schema": EVENT_SCHEMA,
+            "version": "1.0",
+            "event_id": _new_id("event"),
+            "created_at": _now(),
+            "workspace": str(workspace),
+            "capsule_id": _current_capsule_id(workspace),
+            "type": "decision",
+            "agent": request["created_by"],
+            "thread_role": "",
+            "thread_id": "",
+            "summary": f"Control request {args.type}: {reason}",
+            "evidence": [str(path)],
+            "decision": args.type,
+            "next_action": "worker_or_activator_must_process_control_at_safe_point",
+        },
+    )
+    if args.json:
+        print(json.dumps(request, indent=2, ensure_ascii=False))
+    else:
+        print(f"control: {args.type}")
+        print(f"status: pending")
+        print(f"path: {path}")
+    return 0
+
+
+def _control_list(workspace: Path, *, as_json: bool) -> int:
+    requests = _load_control_requests(workspace)
+    payload = {"state": "ready", "path": str(_control_dir(workspace)), "requests": requests}
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"controls: {len(requests)} path={_control_dir(workspace)}")
+    for request in requests:
+        print(f"- {request.get('type')}: status={request.get('status')} reason={request.get('reason')}")
+    return 0
+
+
+def _activate(workspace: Path, args: argparse.Namespace) -> int:
+    root = Path(args.root).expanduser().resolve() if args.root else workspace
+    result = _activate_once(
+        root,
+        worker_command=args.worker_command.strip(),
+        dry_run=not args.execute,
+        timeout=args.timeout,
+        lease_seconds=args.lease_seconds,
+        max_activations=args.max_activations,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        mode = "execute" if args.execute else "dry-run"
+        print(f"activate: {mode}")
+        print(f"root: {result['root']}")
+        print(f"counts: {result['counts']}")
+        print(f"result: {_activation_result_path(root)}")
+    return 0 if not result["counts"].get("failed") else 1
 
 
 def _adaptive(workspace: Path, args: argparse.Namespace) -> int:
@@ -1036,6 +1195,188 @@ def _run_command(workspace: Path, command: str, *, timeout: int) -> dict[str, An
         }
 
 
+def _observe_node(workspace: Path) -> dict[str, Any]:
+    capsule = _read_json(_metaloop_dir(workspace) / "mission_capsule.json")
+    execution = _read_json(_metaloop_dir(workspace) / "execution_report.json")
+    verification = _read_json(_metaloop_dir(workspace) / "verification_result.json")
+    adaptive = _read_json(_adaptive_loop_path(workspace))
+    tick = _read_json(_metaloop_dir(workspace) / "tick_result.json")
+    relay = _read_json(_metaloop_dir(workspace) / "relay_result.json")
+    envelope = _read_json(workspace / "job_envelope.json")
+    events, _ = _read_events(workspace)
+    pending_controls = [str(item.get("type") or "") for item in _pending_control_requests(workspace)]
+    latest_iteration = _latest_adaptive_iteration(adaptive)
+    return {
+        "schema": NODE_SUMMARY_SCHEMA,
+        "version": "1.0",
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "node_id": _summary_node_id(workspace, capsule, envelope),
+        "status": _summary_status(capsule, verification, execution),
+        "goal": _summary_goal(capsule, envelope, adaptive),
+        "current_plan": str(adaptive.get("current_plan") or "") if isinstance(adaptive, dict) else "",
+        "best_metric": verification.get("best_metric") if isinstance(verification, dict) and isinstance(verification.get("best_metric"), dict) else None,
+        "last_event": _event_summary(events[-1] if events else None),
+        "last_verification": _verification_summary(verification),
+        "adaptive_decision": str(latest_iteration.get("decision") or "") if latest_iteration else "",
+        "waiting_on": _summary_waiting_on(verification, pending_controls),
+        "outbox_count": _count_json_files(_metaloop_dir(workspace) / "outbox"),
+        "inbox_count": _count_json_files(_metaloop_dir(workspace) / "inbox"),
+        "pending_controls": pending_controls,
+        "last_tick_action": _nested_string(tick, ["route", "action"]),
+        "last_relay_status": str(relay.get("status") or "") if isinstance(relay, dict) else "",
+        "updated_at": _latest_mtime(
+            [
+                _metaloop_dir(workspace) / "mission_capsule.json",
+                _metaloop_dir(workspace) / "verification_result.json",
+                _adaptive_loop_path(workspace),
+                _event_log_path(workspace),
+                workspace / "job_envelope.json",
+            ]
+        ),
+    }
+
+
+def _observe_root(root: Path) -> dict[str, Any]:
+    nodes = [_observe_node(path) for path in _node_workspaces(root)]
+    counts: dict[str, int] = {}
+    for node in nodes:
+        status = str(node.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "schema": GLOBAL_SUMMARY_SCHEMA,
+        "version": "1.0",
+        "created_at": _now(),
+        "root": str(root),
+        "node_count": len(nodes),
+        "status_counts": counts,
+        "blocked_nodes": [node for node in nodes if node.get("status") in {"blocked", "human_acceptance_required"} or node.get("waiting_on")],
+        "outbox_count": sum(int(node.get("outbox_count") or 0) for node in nodes),
+        "inbox_count": sum(int(node.get("inbox_count") or 0) for node in nodes),
+        "nodes": nodes,
+    }
+
+
+def _activate_once(
+    root: Path,
+    *,
+    worker_command: str,
+    dry_run: bool,
+    timeout: int,
+    lease_seconds: int,
+    max_activations: int,
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    started = 0
+    now = datetime.now(timezone.utc)
+    for node in _node_workspaces(root):
+        candidate = _activation_candidate(node, worker_command=worker_command, lease_seconds=lease_seconds, now=now)
+        if candidate["action"] != "ready":
+            nodes.append(candidate)
+            continue
+        if not worker_command:
+            nodes.append({**candidate, "action": "no_worker_command", "reason": "No worker command was supplied; activation only reports readiness."})
+            continue
+        if dry_run:
+            nodes.append(candidate)
+            continue
+        if started >= max(0, max_activations):
+            nodes.append({**candidate, "reason": "Activation limit reached for this pass."})
+            continue
+        nodes.append(_run_activation_worker(candidate, worker_command=worker_command, timeout=timeout, lease_seconds=lease_seconds))
+        started += 1
+    result = _activation_result(root, worker_command=worker_command, dry_run=dry_run, nodes=nodes)
+    path = _activation_result_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    return result
+
+
+def _activation_candidate(workspace: Path, *, worker_command: str, lease_seconds: int, now: datetime) -> dict[str, Any]:
+    envelope_path = workspace / "job_envelope.json"
+    summary = _observe_node(workspace)
+    base = {
+        "workspace": str(workspace),
+        "node_id": summary.get("node_id") or workspace.name,
+        "status": summary.get("status") or "missing",
+        "pending_controls": summary.get("pending_controls") or [],
+        "job_envelope_path": str(envelope_path),
+        "lease_path": str(_activation_lease_path(workspace)),
+        "worker_command": worker_command,
+    }
+    envelope = _read_json(envelope_path)
+    if not isinstance(envelope, dict):
+        return {**base, "action": "skipped_no_envelope", "reason": "No job_envelope.json is available."}
+    errors = _validate_job_envelope(envelope)
+    envelope_hash = str(envelope.get("envelope_hash") or _job_envelope_hash(envelope))
+    idempotency_key = _hash_object({"workspace": str(workspace), "envelope_hash": envelope_hash, "worker_command": worker_command}, "idempotency_key")
+    base = {**base, "envelope_hash": envelope_hash, "idempotency_key": idempotency_key}
+    if errors:
+        return {**base, "action": "failed", "reason": "job_envelope.json is invalid.", "errors": errors}
+    controls = _pending_control_requests(workspace)
+    if controls:
+        return {
+            **base,
+            "action": "blocked_by_control",
+            "reason": "Pending control files must be processed before activation.",
+            "pending_controls": [str(item.get("type") or "") for item in controls],
+        }
+    lease = _active_activation_lease(workspace, now)
+    if lease is not None:
+        return {**base, "action": "lease_active", "reason": "An activation lease is still active.", "lease": lease}
+    return {**base, "action": "ready", "reason": "Envelope is ready for one-shot activation."}
+
+
+def _run_activation_worker(candidate: dict[str, Any], *, worker_command: str, timeout: int, lease_seconds: int) -> dict[str, Any]:
+    workspace = Path(str(candidate["workspace"]))
+    lease = _write_activation_lease(workspace, candidate, lease_seconds=lease_seconds)
+    command_result = _run_command(workspace, worker_command, timeout=timeout)
+    action = "started" if command_result.get("passed") else "failed"
+    reason = "Worker command completed." if command_result.get("passed") else "Worker command failed."
+    updated_lease = dict(lease)
+    updated_lease["status"] = "completed" if command_result.get("passed") else "failed"
+    updated_lease["completed_at"] = _now()
+    _activation_lease_path(workspace).write_text(json.dumps(updated_lease, indent=2, ensure_ascii=False), encoding="utf-8")
+    _append_event(
+        workspace,
+        {
+            "schema": EVENT_SCHEMA,
+            "version": "1.0",
+            "event_id": _new_id("event"),
+            "created_at": _now(),
+            "workspace": str(workspace),
+            "capsule_id": _current_capsule_id(workspace),
+            "type": "action" if command_result.get("passed") else "blocker",
+            "agent": "activation",
+            "thread_role": "",
+            "thread_id": "",
+            "summary": f"Activation {action}: {reason}",
+            "evidence": [str(_activation_lease_path(workspace))],
+            "decision": action,
+            "next_action": "worker_must_write_execution_report_and_verify" if command_result.get("passed") else "inspect_worker_command_failure",
+        },
+    )
+    return {**candidate, "action": action, "reason": reason, "lease": lease, "command_result": command_result}
+
+
+def _activation_result(root: Path, *, worker_command: str, dry_run: bool, nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for node in nodes:
+        action = str(node.get("action") or "unknown")
+        counts[action] = counts.get(action, 0) + 1
+    return {
+        "schema": ACTIVATION_RESULT_SCHEMA,
+        "version": "1.0",
+        "activation_id": _new_id("activation"),
+        "created_at": _now(),
+        "root": str(root),
+        "dry_run": dry_run,
+        "worker_command": worker_command,
+        "counts": counts,
+        "nodes": nodes,
+    }
+
+
 def _read_status(workspace: Path) -> dict[str, Any]:
     capsule_path = _metaloop_dir(workspace) / "mission_capsule.json"
     adaptive_path = _adaptive_loop_path(workspace)
@@ -1795,6 +2136,204 @@ def _short_thread_id(thread_id: str) -> str:
     if len(thread_id) <= 18:
         return thread_id or "-"
     return f"{thread_id[:8]}...{thread_id[-8:]}"
+
+
+def _control_dir(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "control"
+
+
+def _control_request_path(workspace: Path, control_type: str) -> Path:
+    return _control_dir(workspace) / f"{control_type}.json"
+
+
+def _load_control_requests(workspace: Path) -> list[dict[str, Any]]:
+    control_dir = _control_dir(workspace)
+    if not control_dir.exists():
+        return []
+    requests = []
+    for path in sorted(control_dir.glob("*.json")):
+        payload = _read_json(path)
+        if isinstance(payload, dict):
+            payload["path"] = str(path)
+            requests.append(payload)
+    return requests
+
+
+def _pending_control_requests(workspace: Path) -> list[dict[str, Any]]:
+    return [request for request in _load_control_requests(workspace) if request.get("status") == "pending"]
+
+
+def _parse_control_payload(raw: str) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _node_workspaces(root: Path) -> list[Path]:
+    candidates = []
+    if (root / ".metaloop").exists() or (root / "job_envelope.json").exists():
+        candidates.append(root)
+    if root.exists():
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and ((child / ".metaloop").exists() or (child / "job_envelope.json").exists()):
+                candidates.append(child)
+    return candidates
+
+
+def _summary_node_id(workspace: Path, capsule: Any, envelope: Any) -> str:
+    for payload, key in [(envelope, "job_id"), (capsule, "capsule_id"), (capsule, "mission_id")]:
+        if isinstance(payload, dict) and isinstance(payload.get(key), str) and payload[key]:
+            return payload[key]
+    return workspace.name
+
+
+def _summary_status(capsule: Any, verification: Any, execution: Any) -> str:
+    if isinstance(verification, dict) and isinstance(verification.get("status"), str) and verification["status"]:
+        return verification["status"]
+    if isinstance(execution, dict) and isinstance(execution.get("status"), str) and execution["status"]:
+        return execution["status"]
+    if isinstance(capsule, dict) and isinstance(capsule.get("current_status"), str) and capsule["current_status"]:
+        return capsule["current_status"]
+    return "missing"
+
+
+def _summary_goal(capsule: Any, envelope: Any, adaptive: Any) -> str:
+    for payload, keys in [
+        (capsule, ["intent", "goal", "objective"]),
+        (envelope, ["intent.commander_intent"]),
+        (adaptive, ["goal"]),
+    ]:
+        if not isinstance(payload, dict):
+            continue
+        for key in keys:
+            value = _nested_string(payload, key.split("."))
+            if value:
+                return value
+    return ""
+
+
+def _latest_adaptive_iteration(adaptive: Any) -> dict[str, Any] | None:
+    if not isinstance(adaptive, dict) or not isinstance(adaptive.get("iterations"), list) or not adaptive["iterations"]:
+        return None
+    latest = adaptive["iterations"][-1]
+    return latest if isinstance(latest, dict) else None
+
+
+def _event_summary(event: Any) -> dict[str, str] | None:
+    if not isinstance(event, dict):
+        return None
+    return {
+        "created_at": str(event.get("created_at") or ""),
+        "type": str(event.get("type") or ""),
+        "agent": str(event.get("agent") or ""),
+        "summary": str(event.get("summary") or ""),
+    }
+
+
+def _verification_summary(verification: Any) -> dict[str, Any] | None:
+    if not isinstance(verification, dict):
+        return None
+    return {
+        "status": str(verification.get("status") or ""),
+        "reason": str(verification.get("reason") or ""),
+        "hard_failures": _count_failed(verification.get("hard_validator_results")),
+        "manual_blockers": _count_blocking(verification.get("manual_validator_results")),
+        "unsupported_blockers": _count_blocking(verification.get("unsupported_validator_results")),
+    }
+
+
+def _summary_waiting_on(verification: Any, pending_controls: list[str]) -> str:
+    if pending_controls:
+        return "control"
+    status = str(verification.get("status") or "") if isinstance(verification, dict) else ""
+    if status == "human_acceptance_required":
+        return "human_acceptance"
+    if status in {"missing_execution_report", "execution_incomplete"}:
+        return "execution"
+    if status in {"missing_verification_plan", "unsupported_verification_spec", "invalid_capsule"}:
+        return "design"
+    return ""
+
+
+def _count_json_files(path: Path) -> int:
+    return len(list(path.glob("*.json"))) if path.exists() else 0
+
+
+def _count_failed(items: Any) -> int:
+    return sum(1 for item in items if isinstance(item, dict) and item.get("passed") is False) if isinstance(items, list) else 0
+
+
+def _count_blocking(items: Any) -> int:
+    if not isinstance(items, list):
+        return 0
+    return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False)
+
+
+def _nested_string(payload: Any, keys: list[str]) -> str:
+    value = payload
+    for key in keys:
+        if not isinstance(value, dict):
+            return ""
+        value = value.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _latest_mtime(paths: list[Path]) -> str:
+    existing = [path for path in paths if path.exists()]
+    if not existing:
+        return ""
+    latest = max(existing, key=lambda item: item.stat().st_mtime)
+    return datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat()
+
+
+def _activation_result_path(root: Path) -> Path:
+    return _metaloop_dir(root) / "activation_result.json"
+
+
+def _activation_lease_path(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "activation" / "lease.json"
+
+
+def _active_activation_lease(workspace: Path, now: datetime) -> dict[str, Any] | None:
+    lease = _read_json(_activation_lease_path(workspace))
+    if not isinstance(lease, dict) or lease.get("status") != "active":
+        return None
+    expires_at = _parse_datetime(str(lease.get("expires_at") or ""))
+    if expires_at is None or expires_at <= now:
+        return None
+    return lease
+
+
+def _write_activation_lease(workspace: Path, candidate: dict[str, Any], *, lease_seconds: int) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    lease = {
+        "schema": ACTIVATION_LEASE_SCHEMA,
+        "version": "1.0",
+        "lease_id": _new_id("lease"),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(seconds=max(1, lease_seconds))).isoformat(),
+        "workspace": str(workspace),
+        "job_envelope_path": candidate.get("job_envelope_path", ""),
+        "envelope_hash": candidate.get("envelope_hash", ""),
+        "idempotency_key": candidate.get("idempotency_key", ""),
+        "status": "active",
+    }
+    path = _activation_lease_path(workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(lease, indent=2, ensure_ascii=False), encoding="utf-8")
+    return lease
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _event_log_path(workspace: Path) -> Path:

@@ -114,6 +114,9 @@ python3 "$KERNEL" --workspace . adaptive record ...
 python3 "$KERNEL" --workspace . event append ...
 python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
 python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
+python3 "$KERNEL" --workspace . observe --scope root --json
+python3 "$KERNEL" --workspace . control write --type halt --reason "<why>"
+python3 "$KERNEL" --workspace . activate --root . --worker-command "<explicit command>"
 ```
 
 Intent alone is not enough to lock a capsule. Include rationale, non-goals,
@@ -127,6 +130,12 @@ For observability, prefer read-only summaries from `.metaloop/` artifacts. For
 control, write explicit intent files under `.metaloop/control/`; do not make a
 dashboard or observer silently route work, approve resources, or mutate locked
 contracts.
+
+`activate` is an optional one-shot scanner, not an agent brain, daemon, or
+watcher. Use it only when an explicit worker command is already chosen. It may
+check envelopes, leases, and pending controls, write `activation_result.json`,
+and exit; it must not design tasks, call Codex by itself, interpret metrics, or
+change locked contracts.
 
 ## Validation Discipline
 

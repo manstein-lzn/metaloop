@@ -5,6 +5,7 @@ Codex Skill and any future thin wrappers that need the same `.metaloop/` truth.
 """
 
 from metaloop_core.adaptive_loop import AdaptiveIteration, AdaptiveLoopState, append_iteration, decide_next, load_adaptive_loop, new_adaptive_loop, record_iteration, write_adaptive_loop
+from metaloop_core.activation import activate_once, activation_lease_path, activation_result_path, plan_activation, write_activation_result
 from metaloop_core.control import control_request_path, load_control_requests, pending_control_requests, write_control_request
 from metaloop_core.event_log import EventLog
 from metaloop_core.execution import build_execution_report, load_execution_report, write_execution_report
@@ -29,6 +30,9 @@ __all__ = [
     "VerificationSummary",
     "WorkspacePaths",
     "WorkspaceState",
+    "activate_once",
+    "activation_lease_path",
+    "activation_result_path",
     "append_iteration",
     "build_execution_report",
     "classify_dissatisfaction",
@@ -59,7 +63,9 @@ __all__ = [
     "validate_global_blackboard",
     "validate_job_envelope",
     "pending_control_requests",
+    "plan_activation",
     "write_adaptive_loop",
+    "write_activation_result",
     "write_control_request",
     "write_diagnosis_report",
     "write_execution_report",

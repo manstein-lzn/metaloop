@@ -64,6 +64,7 @@ Codex conversation
 - Core/skill parity tests 防止 portable kernel 与 core 语义漂移。
 - Generic validators 覆盖文件、命令、JSON 指标、字段存在、内容匹配、hash、禁止声明、人工验收和资源门槛。
 - Routable work units 支持 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json`。
+- Observability / control / activation 支持只读 summary、显式控制文件和一次性 activation 扫描；它们都不应演变成后台调度器。
 
 ## 运行验证
 
@@ -89,10 +90,11 @@ python3 -m venv .venv
 - 不要把失败包装成完成；metric gate 失败就是目标未达成。
 - 不要恢复旧交互产品面。Codex 本身就是自然对话层。
 - 不要把具体项目、数据集、指标或业务逻辑写进 MetaLoop 仓库。目标项目自己的配置可以包含这些内容，MetaLoop 本体必须保持领域中立。
+- 不要把 activation 变成 daemon、watcher 或自动 agent pool；它只能做一次性扫描、显式 worker command 和审计记录。
 
 ## 当前风险
 
 - Skill 仍然是软入口，不能单独提供不可绕过的强约束；强约束需要 hooks、sandbox 或 wrapper runtime，但只有真实团队任务证明必要时才添加。
 - VerificationSpec 可能被 agent 设计得过宽，锁定前需要 reviewer 或用户检查。
 - 如果 validator 和被验证工程同仓库，严肃场景应记录 validator 版本/hash，避免 worker 同时改验证规则。
-- `tick` 和 `relay` 是显式 one-shot 文件操作，不是全自动后台调度。自动唤醒 agent thread、watcher、daemon 和消息队列仍不属于当前产品面。
+- `tick`、`relay` 和 `activate` 都是显式 one-shot 文件操作，不是全自动后台调度。自动唤醒 agent thread、watcher、daemon 和消息队列仍不属于当前产品面。

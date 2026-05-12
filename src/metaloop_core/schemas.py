@@ -19,6 +19,8 @@ RELAY_RESULT_SCHEMA = "metaloop.relay_result"
 NODE_SUMMARY_SCHEMA = "metaloop.node_summary"
 GLOBAL_SUMMARY_SCHEMA = "metaloop.global_summary"
 CONTROL_REQUEST_SCHEMA = "metaloop.control_request"
+ACTIVATION_RESULT_SCHEMA = "metaloop.activation_result"
+ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
@@ -55,3 +57,12 @@ ROUTABLE_VERIFICATION_STATUSES = {
 }
 
 CONTROL_TYPES = {"halt", "resource_approval", "inject_fact", "revise_contract_request"}
+ACTIVATION_ACTIONS = {
+    "blocked_by_control",
+    "failed",
+    "lease_active",
+    "no_worker_command",
+    "ready",
+    "skipped_no_envelope",
+    "started",
+}
