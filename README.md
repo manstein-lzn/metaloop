@@ -58,6 +58,7 @@ docs/                 当前产品原则和团队使用文档
 - Context checkpoints：用 `.metaloop/context/*.md` 保存 `resume_brief`、当前假设和失败尝试，避免长期任务因 Codex thread 上下文膨胀而无法接手。
 - Routable work units：当一个工作单元不够时，用 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`tick`、`outbox` 和 `relay` 做显式、可审计的跨节点交接。
 - Observability / control：用只读 summary 观察节点和全局状态，用 `.metaloop/control/*.json` 表达 halt、resource approval、inject fact、revise contract 等显式控制意图。
+- Dashboard：用 `scripts/metaloop_dashboard.py` 在本地浏览器实时查看只读状态；它不写文件、不路由、不启动 agent。
 - Activation：用一次性 scanner 发现 ready node、检查 control/lease，并在调用者显式给出 worker command 时启动 bounded worker；它不是 daemon、agent brain 或隐藏调度器。
 
 ## MetaLoop 不管什么

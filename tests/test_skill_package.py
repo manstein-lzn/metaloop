@@ -47,6 +47,7 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "Do not use routable work units just because a task is large" in skill
     assert "read-only summaries" in skill
     assert ".metaloop/control/" in skill
+    assert "metaloop_dashboard.py" in skill
     assert "activate" in skill
     assert "context" in skill
     assert "Six-Gate Model" in skill
@@ -58,6 +59,7 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "Safe-point discipline" in skill
     assert "do not make a" in skill
     assert "dashboard or observer silently route work" in skill
+    assert "must not expose endpoints that write controls" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
     assert "Infer the task shape" in openai_yaml
@@ -151,10 +153,31 @@ def test_observability_control_doc_is_linked_and_read_only() -> None:
     assert "Dashboard reads truth." in doc
     assert "Control writes intent." in doc
     assert "Observability is read-only." in doc
+    assert "metaloop_dashboard.py" in doc
+    assert "no mutation routes" in doc
     assert ".metaloop/control/" in doc
     assert "It does not directly kill" in doc
     assert "processes or modify Mission Capsules." in doc
     assert "activation" in doc
+
+
+def test_bundled_dashboard_is_read_only_and_dependency_free(tmp_path) -> None:
+    dashboard = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_dashboard.py"
+    source = dashboard.read_text(encoding="utf-8")
+
+    assert "ThreadingHTTPServer" in source
+    assert "do_POST" not in source
+    assert "activate_once" not in source
+    assert "write_control" not in source
+    assert "write_text" not in source
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "py_compile", str(dashboard)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_metaloop_skill_contains_generic_extension_package() -> None:

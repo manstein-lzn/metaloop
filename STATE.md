@@ -63,6 +63,7 @@ Codex agent conversation
 - `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
 - `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
 - bundled kernel 支持 `observe --format brief`，用于最小 dashboard/仪表盘式状态视图。
+- `scripts/metaloop_dashboard.py` 提供本地只读 Web dashboard，默认绑定 localhost，只读取 brief summary，不提供 mutation endpoint。
 - `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
 - `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
 

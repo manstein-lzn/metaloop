@@ -46,6 +46,17 @@ from metaloop_core import observe_node, observe_root
 Recommended first UI: a read-only dashboard or terminal command that renders
 these summaries.
 
+The bundled skill includes a minimal read-only local dashboard:
+
+```bash
+python3 "$SKILL_DIR/scripts/metaloop_dashboard.py" --workspace . --scope node
+python3 "$SKILL_DIR/scripts/metaloop_dashboard.py" --workspace . --scope root
+```
+
+It binds to `127.0.0.1:8765` by default, polls the summary endpoint, and exposes
+no mutation routes. Keep it on localhost unless you intentionally accept the
+risk of exposing local project state.
+
 ## Optional Activation
 
 Activation is the smallest automation layer that can remove the user from
@@ -113,6 +124,7 @@ process manager with leases and must write an interruption artifact.
 - No hidden scheduler
 - No automatic daemon in core
 - No dashboard-owned routing logic
+- No dashboard-owned mutation endpoints
 - No direct mutation of locked VerificationSpec
 - No implicit approval for expensive resources
 

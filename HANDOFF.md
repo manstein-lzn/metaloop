@@ -65,6 +65,7 @@ Codex conversation
 - Generic validators 覆盖文件、命令、JSON 指标、字段存在、内容匹配、hash、禁止声明、人工验收和资源门槛。
 - Routable work units 支持 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json`。
 - Observability / control / activation 支持只读 summary、显式控制文件和一次性 activation 扫描；它们都不应演变成后台调度器。
+- `scripts/metaloop_dashboard.py` 是只读 localhost dashboard；不要给它增加写 control、activate、relay、edit artifact 等 mutation endpoint。
 - Context checkpoints 支持 `.metaloop/context/resume_brief.md` 等轻量 Markdown 恢复摘要，解决长期 Codex thread 上下文膨胀后的接手问题。
 
 ## 运行验证
