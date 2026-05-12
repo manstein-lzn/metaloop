@@ -11,6 +11,7 @@ Codex $metaloop skill
   -> optional persistent Codex thread roles recorded in .metaloop/threads.json
   -> adaptive goal loop events and repair/redesign decisions
   -> optional routable work units through job envelopes, tick, outbox, and relay
+  -> read-only observability and explicit control files
 ```
 
 核心原则：**Prompt-first / code-backed**。Codex agent 和 skill prompt 负责理解、设计、反思和策略；kernel、schemas、validators、`metaloop_core` 和 `.metaloop/` artifacts 负责状态、验证、审计和恢复。
@@ -52,6 +53,7 @@ docs/                 当前产品原则和团队使用文档
 - Thread registry：多个 Codex thread 参与时，用 `.metaloop/threads.json` 记录职责和 handoff 边界。
 - Event log：用 `.metaloop/event_log.jsonl` 记录长任务中的关键观察、阻塞、决策和验证笔记。
 - Routable work units：当一个工作单元不够时，用 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`tick`、`outbox` 和 `relay` 做显式、可审计的跨节点交接。
+- Observability / control：用只读 summary 观察节点和全局状态，用 `.metaloop/control/*.json` 表达 halt、resource approval、inject fact、revise contract 等显式控制意图。
 
 ## MetaLoop 不管什么
 
@@ -91,5 +93,6 @@ git diff --check
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环。
 - [docs/metaloop_design_autonomy.md](docs/metaloop_design_autonomy.md)：如何让 `$metaloop` 自动完成设计、分类任务形态并降低用户心智负担。
 - [docs/metaloop_routable_work_units.md](docs/metaloop_routable_work_units.md)：面向多节点路由的 job envelope / blackboard / router 骨架。
+- [docs/metaloop_observability_control.md](docs/metaloop_observability_control.md)：只读可观测和显式控制文件协议。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则。
 - [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律。

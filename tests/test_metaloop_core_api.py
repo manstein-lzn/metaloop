@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from metaloop_core import EventLog, ThreadRegistry, WorkspaceState, classify_dissatisfaction, load_verification_summary
+from metaloop_core import EventLog, ThreadRegistry, WorkspaceState, classify_dissatisfaction, load_verification_summary, observe_node, write_control_request
 from metaloop_core.ids import new_id, utc_now
 
 
@@ -17,6 +17,8 @@ def test_metaloop_core_public_api_is_importable() -> None:
     assert "T" in utc_now()
     assert WorkspaceState(".").root.is_absolute()
     assert classify_dissatisfaction("目标不对，需要重设计") == "redesign"
+    assert observe_node(".")["schema"] == "metaloop.node_summary"
+    assert callable(write_control_request)
 
 
 def test_metaloop_core_does_not_import_legacy_runtime_modules() -> None:

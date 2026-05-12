@@ -29,11 +29,13 @@ Codex agent conversation
 - Domain extension 提供领域验证语言，MetaLoop Core 不塞满领域规则。
 - 多个 Codex thread 可以围绕同一目标协作，但共享真相必须写入 `.metaloop/`，不能只靠聊天记忆。
 - 对超出单个可靠工作单元的复杂任务，MetaLoop 支持可路由工作单元，但仍保持 one-shot 文件操作，不引入后台调度器。
+- 用户必须能随时观察和干预；观察是只读 summary，控制是显式 `.metaloop/control/*.json` 意图文件，不让 dashboard 或 observer 变成第二套调度器。
 
 ## 保留的代码面
 
 - `skills/metaloop/`：可一键部署的 Codex Skill，内含 portable kernel、generic extension、参考文档和 metadata。
 - `src/metaloop_core/`：可复用协议库，提供 Mission Capsule I/O、ExecutionReport I/O、VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、adaptive loop、ObservationReport / DiagnosisReport、repair/redesign vocabulary、routable work unit routing、tick 和 relay。
+- `src/metaloop_core/observe.py` / `control.py`：只读 node/global summaries 和显式 control request 文件。
 - `tools/check_core_import_boundary.py`：确保 core 不重新依赖已移除的外部产品面。
 - `tests/`：只保留 core、skill package、core/skill parity 和 verification 测试。
 
@@ -57,6 +59,8 @@ Codex agent conversation
 - `.metaloop/event_log.jsonl` 可记录长任务观察、决策、阻塞、handoff、验证、repair 和 redesign。
 - `.metaloop/adaptive_loop.json` 支持通用目标逼近闭环：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
 - `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
+- `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
+- `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
 
 ## 当前测试目标
 

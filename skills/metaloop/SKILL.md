@@ -123,6 +123,11 @@ For metric, benchmark, research, promotion, or quality-breakthrough tasks,
 `file_exists` is not enough. Add metric gates, baseline comparisons, resource
 gates, forbidden claims, attempt evidence, or blocking manual review.
 
+For observability, prefer read-only summaries from `.metaloop/` artifacts. For
+control, write explicit intent files under `.metaloop/control/`; do not make a
+dashboard or observer silently route work, approve resources, or mutate locked
+contracts.
+
 ## Validation Discipline
 
 Verification is part of the prompt, not an afterthought.

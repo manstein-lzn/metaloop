@@ -16,6 +16,9 @@ GLOBAL_BLACKBOARD_SCHEMA = "metaloop.global_blackboard"
 TICK_RESULT_SCHEMA = "metaloop.tick_result"
 DISPATCH_MAP_SCHEMA = "metaloop.dispatch_map"
 RELAY_RESULT_SCHEMA = "metaloop.relay_result"
+NODE_SUMMARY_SCHEMA = "metaloop.node_summary"
+GLOBAL_SUMMARY_SCHEMA = "metaloop.global_summary"
+CONTROL_REQUEST_SCHEMA = "metaloop.control_request"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
@@ -50,3 +53,5 @@ ROUTABLE_VERIFICATION_STATUSES = {
     "missing_verification_plan",
     "unsupported_verification_spec",
 }
+
+CONTROL_TYPES = {"halt", "resource_approval", "inject_fact", "revise_contract_request"}

@@ -45,6 +45,10 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "dispatch_map.json" in skill
     assert "job_envelope.json" in skill
     assert "Do not use routable work units just because a task is large" in skill
+    assert "read-only summaries" in skill
+    assert ".metaloop/control/" in skill
+    assert "do not make a" in skill
+    assert "dashboard or observer silently route work" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
     assert "Infer the task shape" in openai_yaml
@@ -109,6 +113,19 @@ def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
     assert "Thread context is useful but not authoritative" in doc
     assert "Events do not change locked contracts" in doc
     assert "Do not use one-shot `codex exec` as the default intelligence layer" in doc
+
+
+def test_observability_control_doc_is_linked_and_read_only() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "metaloop_observability_control.md").read_text(encoding="utf-8")
+
+    assert "docs/metaloop_observability_control.md" in readme
+    assert "Dashboard reads truth." in doc
+    assert "Control writes intent." in doc
+    assert "Observability is read-only." in doc
+    assert ".metaloop/control/" in doc
+    assert "It does not directly kill" in doc
+    assert "processes or modify Mission Capsules." in doc
 
 
 def test_metaloop_skill_contains_generic_extension_package() -> None:
