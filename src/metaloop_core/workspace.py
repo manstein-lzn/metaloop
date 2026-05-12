@@ -7,6 +7,7 @@ from typing import Any
 
 from metaloop_core.event_log import EventLog
 from metaloop_core.thread_registry import ThreadRegistry
+from metaloop_core.context import context_summary
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,10 @@ class WorkspacePaths:
     @property
     def relay_result(self) -> Path:
         return self.metaloop_dir / "relay_result.json"
+
+    @property
+    def context_dir(self) -> Path:
+        return self.metaloop_dir / "context"
 
 
 class WorkspaceState:
@@ -100,6 +105,7 @@ class WorkspaceState:
         observation = self.observation_report()
         diagnosis = self.diagnosis_report()
         relay = self.relay_result()
+        context = context_summary(self.root)
         thread_registry = ThreadRegistry(self.root).load()
         events = EventLog(self.root).list()
         return {
@@ -111,6 +117,12 @@ class WorkspaceState:
             "observation": _artifact_state(observation, self.paths.observation_report, status_key="status"),
             "diagnosis": _artifact_state(diagnosis, self.paths.diagnosis_report, status_key="evaluation_status"),
             "relay": _artifact_state(relay, self.paths.relay_result, status_key="status"),
+            "context": {
+                "state": context["state"],
+                "path": context["context_dir"],
+                "ready_count": context["ready_count"],
+                "missing": context["missing"],
+            },
             "threads": {
                 "state": "ready" if thread_registry else "missing",
                 "path": str(self.paths.thread_registry),

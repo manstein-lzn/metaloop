@@ -67,9 +67,17 @@ Thread context is useful but not authoritative. Shared truth must live in `.meta
 - `verification_result.json`
 - `threads.json`
 - `event_log.jsonl`
+- `context/resume_brief.md`
+- `context/current_hypothesis.md`
+- `context/failed_attempts.md`
 - attempts, decisions, and revision archives
 
 If a thread learns something important, it should summarize that into the relevant artifact instead of relying on private chat memory.
+
+For long-running tasks, the handoff path should start with
+`.metaloop/context/resume_brief.md`. This file is not a transcript and not
+authoritative task truth; it is a compact recovery note that points the next
+thread back to locked artifacts and evidence.
 
 ## Event Log
 

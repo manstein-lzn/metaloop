@@ -85,6 +85,27 @@ A Mission Capsule should be readable by both user and Codex. Keep it focused on:
 
 It is not a full transcript.
 
+## Context Checkpoints
+
+Long tasks should not rely on the private Codex thread staying readable
+forever. Keep compact Markdown recovery notes in:
+
+```text
+.metaloop/context/
+```
+
+The minimal files are:
+
+- `resume_brief.md`: current goal, locked acceptance, best result, latest
+  diagnosis, next plan, and read-first artifacts.
+- `current_hypothesis.md`: the current most credible explanation and next test.
+- `failed_attempts.md`: attempted directions that should not be repeated.
+- `project_brief.md`: stable project facts, constraints, and key paths.
+
+These files are not authoritative task truth. They help a new Codex thread
+resume quickly before reading `mission_capsule.json`, `verification_result.json`,
+`adaptive_loop.json`, and selected evidence.
+
 ## Decision Discipline
 
 When output is unsatisfactory, classify before executing:

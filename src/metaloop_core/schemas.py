@@ -21,6 +21,7 @@ GLOBAL_SUMMARY_SCHEMA = "metaloop.global_summary"
 CONTROL_REQUEST_SCHEMA = "metaloop.control_request"
 ACTIVATION_RESULT_SCHEMA = "metaloop.activation_result"
 ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
+CONTEXT_SUMMARY_SCHEMA = "metaloop.context_summary"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
@@ -65,4 +66,11 @@ ACTIVATION_ACTIONS = {
     "ready",
     "skipped_no_envelope",
     "started",
+}
+
+CONTEXT_FILE_NAMES = {
+    "current_hypothesis.md",
+    "failed_attempts.md",
+    "project_brief.md",
+    "resume_brief.md",
 }

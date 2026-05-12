@@ -9,6 +9,7 @@ from metaloop_core.event_log import EventLog
 from metaloop_core.ids import utc_now
 from metaloop_core.schemas import GLOBAL_SUMMARY_SCHEMA, NODE_SUMMARY_SCHEMA
 from metaloop_core.control import pending_control_requests
+from metaloop_core.context import context_summary
 
 
 def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
@@ -29,6 +30,7 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
     outbox_count = _count_json_files(metaloop_dir / "outbox")
     inbox_count = _count_json_files(metaloop_dir / "inbox")
     pending_controls = sorted(str(item.get("type") or "") for item in pending_control_requests(root))
+    context = context_summary(root)
 
     return {
         "schema": NODE_SUMMARY_SCHEMA,
@@ -47,6 +49,12 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
         "outbox_count": outbox_count,
         "inbox_count": inbox_count,
         "pending_controls": pending_controls,
+        "context": {
+            "state": context["state"],
+            "ready_count": context["ready_count"],
+            "missing": context["missing"],
+            "resume_brief": _context_file_state(context, "resume_brief.md"),
+        },
         "last_tick_action": _nested_string(tick, ["route", "action"]),
         "last_relay_status": _string(relay.get("status")) if isinstance(relay, dict) else "",
         "updated_at": _updated_at(
@@ -55,6 +63,7 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
                 metaloop_dir / "verification_result.json",
                 metaloop_dir / "adaptive_loop.json",
                 metaloop_dir / "event_log.jsonl",
+                metaloop_dir / "context" / "resume_brief.md",
                 root / "job_envelope.json",
             ]
         ),
@@ -202,6 +211,16 @@ def _count_blocking(items: Any) -> int:
     if not isinstance(items, list):
         return 0
     return sum(1 for item in items if isinstance(item, dict) and item.get("severity") == "blocking" and item.get("passed") is False)
+
+
+def _context_file_state(summary: dict[str, Any], name: str) -> dict[str, Any] | None:
+    files = summary.get("files")
+    if not isinstance(files, list):
+        return None
+    for item in files:
+        if isinstance(item, dict) and item.get("name") == name:
+            return item
+    return None
 
 
 def _updated_at(paths: list[Path]) -> str:

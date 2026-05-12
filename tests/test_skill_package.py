@@ -48,6 +48,7 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "read-only summaries" in skill
     assert ".metaloop/control/" in skill
     assert "activate" in skill
+    assert "context" in skill
     assert "do not make a" in skill
     assert "dashboard or observer silently route work" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
@@ -81,6 +82,7 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert "outcome-first" in reference
     assert "bounded inspection" in reference
     assert "process-heavy prompts" in reference
+    assert "context" in reference
 
 
 def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
@@ -422,6 +424,60 @@ def test_bundled_skill_kernel_observe_control_and_activate(tmp_path) -> None:
     blocked_result = json.loads(blocked.stdout)
     assert blocked_result["counts"]["blocked_by_control"] == 1
     assert not (node / "marker.txt").exists()
+
+
+def test_bundled_skill_kernel_context_checkpoints(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+
+    init = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "context", "init", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert init.returncode == 0, init.stderr
+    payload = json.loads(init.stdout)
+    assert len(payload["created"]) == 4
+    assert payload["summary"]["schema"] == "metaloop.context_summary"
+
+    write = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "context",
+            "write",
+            "--file",
+            "resume_brief.md",
+            "--content",
+            "# Resume Brief\n\n## Current Goal\n\n- Preserve enough context to resume.",
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert write.returncode == 0, write.stderr
+    assert json.loads(write.stdout)["name"] == "resume_brief.md"
+
+    read = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "context", "read", "--file", "resume_brief.md"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert read.returncode == 0, read.stderr
+    assert "Preserve enough context to resume" in read.stdout
+
+    status = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "status", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert status.returncode == 0, status.stderr
+    assert json.loads(status.stdout)["context"]["ready_count"] == 4
 
 
 def test_bundled_skill_kernel_tracks_persistent_agent_threads(tmp_path) -> None:

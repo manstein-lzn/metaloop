@@ -112,6 +112,9 @@ python3 "$KERNEL" --workspace . run --command "<command>" --evidence "<note>"
 python3 "$KERNEL" --workspace . verify
 python3 "$KERNEL" --workspace . adaptive record ...
 python3 "$KERNEL" --workspace . event append ...
+python3 "$KERNEL" --workspace . context init
+python3 "$KERNEL" --workspace . context status --json
+python3 "$KERNEL" --workspace . context write --file resume_brief.md --content "<markdown>"
 python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
 python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
 python3 "$KERNEL" --workspace . observe --scope root --json
@@ -136,6 +139,11 @@ watcher. Use it only when an explicit worker command is already chosen. It may
 check envelopes, leases, and pending controls, write `activation_result.json`,
 and exit; it must not design tasks, call Codex by itself, interpret metrics, or
 change locked contracts.
+
+For long tasks, keep `.metaloop/context/resume_brief.md` current enough that a
+new Codex thread can resume without reading the full transcript. Context
+checkpoints are compact Markdown recovery notes, not a second memory system.
+Update them after major diagnosis changes, repeated attempts, or handoff.
 
 ## Validation Discipline
 
@@ -172,6 +180,8 @@ decision, and next plan before another attempt.
 - Mission Capsule is task truth; chat history is not operational state.
 - Persistent thread context is useful but not authoritative unless summarized
   into `.metaloop/` artifacts.
+- `resume_brief.md` is recovery context, not task truth; it must point back to
+  locked artifacts and evidence.
 - ExtensionSpec and VerificationSpec are locked with the Mission Capsule and
   carry hashes.
 - Verification requires a valid ExecutionReport.
@@ -189,5 +199,5 @@ decision, and next plan before another attempt.
 - `references/prompt_first_code_backed.md`: prompt-first / code-backed product
   discipline.
 - Project docs, when present: `README.md`, `STATE.md`, `HANDOFF.md`,
-  `docs/metaloop_design_autonomy.md`, and
+  `docs/metaloop_context_checkpoints.md`, `docs/metaloop_design_autonomy.md`, and
   `docs/metaloop_routable_work_units.md`.

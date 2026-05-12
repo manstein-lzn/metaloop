@@ -53,6 +53,7 @@ docs/                 当前产品原则和团队使用文档
 - Adaptive Goal Loop：当目标未达成时，记录观察、评估、诊断、下一轮计划和 repair/redesign 决策。
 - Thread registry：多个 Codex thread 参与时，用 `.metaloop/threads.json` 记录职责和 handoff 边界。
 - Event log：用 `.metaloop/event_log.jsonl` 记录长任务中的关键观察、阻塞、决策和验证笔记。
+- Context checkpoints：用 `.metaloop/context/*.md` 保存 `resume_brief`、当前假设和失败尝试，避免长期任务因 Codex thread 上下文膨胀而无法接手。
 - Routable work units：当一个工作单元不够时，用 `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`tick`、`outbox` 和 `relay` 做显式、可审计的跨节点交接。
 - Observability / control：用只读 summary 观察节点和全局状态，用 `.metaloop/control/*.json` 表达 halt、resource approval、inject fact、revise contract 等显式控制意图。
 - Activation：用一次性 scanner 发现 ready node、检查 control/lease，并在调用者显式给出 worker command 时启动 bounded worker；它不是 daemon、agent brain 或隐藏调度器。
@@ -93,6 +94,7 @@ git diff --check
 - [docs/metaloop_dynamic_extension_protocol_upgrade.md](docs/metaloop_dynamic_extension_protocol_upgrade.md)：ExtensionSpec / VerificationSpec 扩展协议。
 - [docs/metaloop_multi_thread_agent_protocol.md](docs/metaloop_multi_thread_agent_protocol.md)：多 thread agent 协作协议。
 - [docs/metaloop_adaptive_goal_loop.md](docs/metaloop_adaptive_goal_loop.md)：通用目标逼近闭环。
+- [docs/metaloop_context_checkpoints.md](docs/metaloop_context_checkpoints.md)：长任务上下文压缩和接手恢复摘要。
 - [docs/metaloop_design_autonomy.md](docs/metaloop_design_autonomy.md)：如何让 `$metaloop` 自动完成设计、分类任务形态并降低用户心智负担。
 - [docs/metaloop_routable_work_units.md](docs/metaloop_routable_work_units.md)：面向多节点路由的 job envelope / blackboard / router 骨架。
 - [docs/metaloop_observability_control.md](docs/metaloop_observability_control.md)：只读可观测和显式控制文件协议。

@@ -58,6 +58,7 @@ Codex agent conversation
 - `.metaloop/threads.json` 可记录 persistent Codex thread 的 role、thread_id、职责和 handoff 状态。
 - `.metaloop/event_log.jsonl` 可记录长任务观察、决策、阻塞、handoff、验证、repair 和 redesign。
 - `.metaloop/adaptive_loop.json` 支持通用目标逼近闭环：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
+- `.metaloop/context/*.md` 支持长任务上下文压缩：`resume_brief.md`、`current_hypothesis.md`、`failed_attempts.md`、`project_brief.md`。
 - `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
 - `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
 - `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
@@ -78,7 +79,8 @@ git diff --check
 1. 继续打磨 `$metaloop` skill 的主动 design 指南，让 agent 自动选择单节点、多 thread 或 routable work units，而不是要求用户指定 MetaLoop 内部机制。
 2. 增加少量高质量 domain extension examples，但不要把领域规则写死进 core。
 3. 加强 adaptive loop 的失败诊断和下一轮计划模板，保持 prompt-first，不急于代码化复杂策略。
-4. 建立团队内测反馈机制：记录哪些任务需要更强 hooks、sandbox 或 wrapper runtime，再决定是否新增外层约束。
+4. 观察 context checkpoint 在真实长任务中的使用质量，避免它膨胀成 transcript。
+5. 建立团队内测反馈机制：记录哪些任务需要更强 hooks、sandbox 或 wrapper runtime，再决定是否新增外层约束。
 
 ## 不要做
 
@@ -86,6 +88,7 @@ git diff --check
 - 不要恢复旧外部运行时或多 agent 编排器。
 - 不要把 Codex 自述完成当作 verified completion。
 - 不要把完整聊天史当 operational memory。
+- 不要把 context checkpoint 写成完整聊天记录；它只保存恢复任务所需的压缩事实。
 - 不要为每个有用推理模式新增 Python 模块。
 - 不要在没有真实需求前添加重型 scheduler、agent pool 或领域专用框架。
 - 不要把任何具体项目、数据集、指标或业务逻辑写进 MetaLoop core 或 skill；这些只应出现在目标项目自己的 ExtensionSpec、VerificationSpec、capsule、blackboard 或模板里。

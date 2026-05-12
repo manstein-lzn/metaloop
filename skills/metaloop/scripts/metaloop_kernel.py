@@ -31,6 +31,7 @@ GLOBAL_SUMMARY_SCHEMA = "metaloop.global_summary"
 CONTROL_REQUEST_SCHEMA = "metaloop.control_request"
 ACTIVATION_RESULT_SCHEMA = "metaloop.activation_result"
 ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
+CONTEXT_SUMMARY_SCHEMA = "metaloop.context_summary"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
 ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
@@ -64,6 +65,27 @@ KNOWN_VALIDATORS = KNOWN_EXECUTABLE_VALIDATORS | KNOWN_MANUAL_VALIDATORS
 MODES = {"executable", "manual", "unsupported"}
 SEVERITIES = {"blocking", "advisory"}
 CONTROL_TYPES = {"halt", "resource_approval", "inject_fact", "revise_contract_request"}
+CONTEXT_FILE_NAMES = {
+    "current_hypothesis.md",
+    "failed_attempts.md",
+    "project_brief.md",
+    "resume_brief.md",
+}
+CONTEXT_TEMPLATES = {
+    "project_brief.md": "# Project Brief\n\n## Goal\n\n-\n\n## Non-Goals\n\n-\n\n## Locked Acceptance\n\n-\n\n## Constraints\n\n-\n\n## Key Paths\n\n-\n",
+    "resume_brief.md": "# Resume Brief\n\n## Current Goal\n\n-\n\n## Locked Acceptance\n\n-\n\n## Current Best Result\n\n-\n\n## Latest Diagnosis\n\n-\n\n## Next Plan\n\n-\n\n## Read First\n\n- .metaloop/mission_capsule.json\n- .metaloop/verification_result.json\n- .metaloop/adaptive_loop.json\n",
+    "current_hypothesis.md": "# Current Hypothesis\n\n## Hypothesis\n\n-\n\n## Rationale\n\n-\n\n## Evidence\n\n-\n\n## Next Test\n\n-\n",
+    "failed_attempts.md": "# Failed Attempts\n\n## Do Not Repeat\n\n-\n\n## Attempt Notes\n\n-\n",
+}
+RESUME_READ_ORDER = [
+    ".metaloop/context/resume_brief.md",
+    ".metaloop/mission_capsule.json",
+    ".metaloop/verification_result.json",
+    ".metaloop/adaptive_loop.json",
+    ".metaloop/context/current_hypothesis.md",
+    ".metaloop/context/failed_attempts.md",
+    ".metaloop/event_log.jsonl",
+]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,6 +122,28 @@ def main(argv: list[str] | None = None) -> int:
     activate_parser.add_argument("--lease-seconds", type=int, default=3600, help="Activation lease duration.")
     activate_parser.add_argument("--max-activations", type=int, default=1, help="Maximum ready nodes to execute in this pass.")
     activate_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    context_parser = subparsers.add_parser("context", help="Manage lightweight context checkpoint markdown files.")
+    context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
+
+    context_status_parser = context_subparsers.add_parser("status", help="Inspect .metaloop/context checkpoint files.")
+    context_status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    context_init_parser = context_subparsers.add_parser("init", help="Create missing context checkpoint templates.")
+    context_init_parser.add_argument("--file", action="append", default=[], choices=sorted(CONTEXT_FILE_NAMES), help="Specific checkpoint file to create. Repeatable.")
+    context_init_parser.add_argument("--agent", default="codex", help="Agent label for audit event.")
+    context_init_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    context_read_parser = context_subparsers.add_parser("read", help="Print one context checkpoint file.")
+    context_read_parser.add_argument("--file", required=True, choices=sorted(CONTEXT_FILE_NAMES), help="Checkpoint file to read.")
+
+    context_write_parser = context_subparsers.add_parser("write", help="Write one context checkpoint file.")
+    context_write_parser.add_argument("--file", required=True, choices=sorted(CONTEXT_FILE_NAMES), help="Checkpoint file to write.")
+    context_write_parser.add_argument("--content", default="", help="Markdown content to write.")
+    context_write_parser.add_argument("--from-file", help="Read Markdown content from a file.")
+    context_write_parser.add_argument("--append", action="store_true", help="Append instead of replacing.")
+    context_write_parser.add_argument("--agent", default="codex", help="Agent label for audit event.")
+    context_write_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
     design_parser = subparsers.add_parser("design", help="Write a locked lightweight Mission Capsule.")
     design_parser.add_argument("--intent", required=True, help="Clarified user intent.")
@@ -236,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
         return _control(workspace, args)
     if args.command == "activate":
         return _activate(workspace, args)
+    if args.command == "context":
+        return _context(workspace, args)
     if args.command == "design":
         return _design(workspace, args)
     if args.command == "run":
@@ -268,6 +314,7 @@ def _status(workspace: Path, *, as_json: bool) -> int:
     print(f"execution: {status['execution']['state']} status={status['execution'].get('status') or '-'}")
     print(f"verification: {status['verification']['state']} status={status['verification'].get('status') or '-'}")
     print(f"adaptive_loop: {status['adaptive_loop']['state']} status={status['adaptive_loop'].get('status') or '-'}")
+    print(f"context: {status['context']['state']} ready={status['context'].get('ready_count', 0)}")
     print(f"threads: {status['threads']['state']} count={status['threads'].get('count', 0)}")
     print(f"events: {status['events']['state']} count={status['events'].get('count', 0)}")
     print(f"next_action: {status['next_action']}")
@@ -392,6 +439,131 @@ def _activate(workspace: Path, args: argparse.Namespace) -> int:
         print(f"counts: {result['counts']}")
         print(f"result: {_activation_result_path(root)}")
     return 0 if not result["counts"].get("failed") else 1
+
+
+def _context(workspace: Path, args: argparse.Namespace) -> int:
+    if args.context_command == "status":
+        return _context_status(workspace, as_json=args.json)
+    if args.context_command == "init":
+        return _context_init(workspace, args)
+    if args.context_command == "read":
+        return _context_read(workspace, args.file)
+    if args.context_command == "write":
+        return _context_write(workspace, args)
+    return 2
+
+
+def _context_status(workspace: Path, *, as_json: bool) -> int:
+    summary = _context_summary(workspace)
+    if as_json:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        return 0
+    print(f"context: {summary['state']} ready={summary['ready_count']} path={summary['context_dir']}")
+    if summary["missing"]:
+        print(f"missing: {', '.join(summary['missing'])}")
+    print("resume_read_order:")
+    for item in summary["resume_read_order"]:
+        print(f"- {item}")
+    return 0
+
+
+def _context_init(workspace: Path, args: argparse.Namespace) -> int:
+    selected = args.file or sorted(CONTEXT_FILE_NAMES)
+    created = []
+    existing = []
+    for name in selected:
+        filename = _context_filename(name)
+        path = _context_file_path(workspace, filename)
+        if path.exists():
+            existing.append(str(path))
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(CONTEXT_TEMPLATES[filename], encoding="utf-8")
+        created.append(str(path))
+    if created:
+        _append_event(
+            workspace,
+            {
+                "schema": EVENT_SCHEMA,
+                "version": "1.0",
+                "event_id": _new_id("event"),
+                "created_at": _now(),
+                "workspace": str(workspace),
+                "capsule_id": _current_capsule_id(workspace),
+                "type": "note",
+                "agent": args.agent.strip() or "codex",
+                "thread_role": "",
+                "thread_id": "",
+                "summary": f"Initialized context checkpoint files: {', '.join(Path(item).name for item in created)}",
+                "evidence": created,
+                "decision": "",
+                "next_action": "keep_resume_brief_current_during_long_tasks",
+            },
+        )
+    payload = {"created": created, "existing": existing, "summary": _context_summary(workspace)}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"context: initialized created={len(created)} existing={len(existing)}")
+        print(f"path: {_context_dir(workspace)}")
+    return 0
+
+
+def _context_read(workspace: Path, name: str) -> int:
+    path = _context_file_path(workspace, name)
+    try:
+        print(path.read_text(encoding="utf-8"), end="")
+    except OSError:
+        print(f"context_missing: {path}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _context_write(workspace: Path, args: argparse.Namespace) -> int:
+    if args.from_file:
+        try:
+            content = _resolve_workspace_path(workspace, args.from_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"context_invalid: cannot read --from-file: {exc}", file=sys.stderr)
+            return 1
+    else:
+        content = args.content
+    if not content.strip():
+        print("context_invalid: provide non-empty --content or --from-file", file=sys.stderr)
+        return 1
+    filename = _context_filename(args.file)
+    path = _context_file_path(workspace, filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = content.rstrip() + "\n"
+    if args.append and path.exists():
+        text = path.read_text(encoding="utf-8").rstrip() + "\n\n" + text
+    path.write_text(text, encoding="utf-8")
+    _append_event(
+        workspace,
+        {
+            "schema": EVENT_SCHEMA,
+            "version": "1.0",
+            "event_id": _new_id("event"),
+            "created_at": _now(),
+            "workspace": str(workspace),
+            "capsule_id": _current_capsule_id(workspace),
+            "type": "note",
+            "agent": args.agent.strip() or "codex",
+            "thread_role": "",
+            "thread_id": "",
+            "summary": f"Updated context checkpoint {filename}.",
+            "evidence": [str(path)],
+            "decision": "",
+            "next_action": "use_context_checkpoint_before_reading_full_history",
+        },
+    )
+    payload = {"name": filename, "path": str(path), "size": path.stat().st_size, "updated_at": _latest_mtime([path])}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"context: {filename}")
+        print(f"path: {path}")
+    return 0
 
 
 def _adaptive(workspace: Path, args: argparse.Namespace) -> int:
@@ -1206,6 +1378,7 @@ def _observe_node(workspace: Path) -> dict[str, Any]:
     events, _ = _read_events(workspace)
     pending_controls = [str(item.get("type") or "") for item in _pending_control_requests(workspace)]
     latest_iteration = _latest_adaptive_iteration(adaptive)
+    context = _context_summary(workspace)
     return {
         "schema": NODE_SUMMARY_SCHEMA,
         "version": "1.0",
@@ -1223,6 +1396,12 @@ def _observe_node(workspace: Path) -> dict[str, Any]:
         "outbox_count": _count_json_files(_metaloop_dir(workspace) / "outbox"),
         "inbox_count": _count_json_files(_metaloop_dir(workspace) / "inbox"),
         "pending_controls": pending_controls,
+        "context": {
+            "state": context["state"],
+            "ready_count": context["ready_count"],
+            "missing": context["missing"],
+            "resume_brief": _context_file_state(context, "resume_brief.md"),
+        },
         "last_tick_action": _nested_string(tick, ["route", "action"]),
         "last_relay_status": str(relay.get("status") or "") if isinstance(relay, dict) else "",
         "updated_at": _latest_mtime(
@@ -1231,6 +1410,7 @@ def _observe_node(workspace: Path) -> dict[str, Any]:
                 _metaloop_dir(workspace) / "verification_result.json",
                 _adaptive_loop_path(workspace),
                 _event_log_path(workspace),
+                _context_file_path(workspace, "resume_brief.md"),
                 workspace / "job_envelope.json",
             ]
         ),
@@ -1384,6 +1564,7 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     verification_path = _metaloop_dir(workspace) / "verification_result.json"
     threads_path = _thread_registry_path(workspace)
     event_path = _event_log_path(workspace)
+    context = _context_summary(workspace)
     capsule = _read_json(capsule_path)
     adaptive_loop = _read_json(adaptive_path)
     execution = _read_json(execution_path)
@@ -1444,6 +1625,12 @@ def _read_status(workspace: Path) -> dict[str, Any]:
         "adaptive_loop": adaptive_state,
         "execution": execution_state,
         "verification": verification_state,
+        "context": {
+            "state": context["state"],
+            "path": context["context_dir"],
+            "ready_count": context["ready_count"],
+            "missing": context["missing"],
+        },
         "threads": threads_state,
         "events": events_state,
     }
@@ -2169,6 +2356,60 @@ def _parse_control_payload(raw: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _context_dir(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "context"
+
+
+def _context_filename(name: str) -> str:
+    filename = Path(name).name
+    if filename not in CONTEXT_FILE_NAMES:
+        raise ValueError(f"unknown context checkpoint file: {name}")
+    return filename
+
+
+def _context_file_path(workspace: Path, name: str) -> Path:
+    return _context_dir(workspace) / _context_filename(name)
+
+
+def _context_summary(workspace: Path) -> dict[str, Any]:
+    files = []
+    for name in sorted(CONTEXT_FILE_NAMES):
+        path = _context_file_path(workspace, name)
+        files.append(
+            {
+                "name": name,
+                "path": str(path),
+                "state": "ready" if path.exists() else "missing",
+                "size": path.stat().st_size if path.exists() else 0,
+                "updated_at": _latest_mtime([path]) if path.exists() else "",
+                "required_for_resume": name == "resume_brief.md",
+            }
+        )
+    ready_count = sum(1 for item in files if item["state"] == "ready")
+    return {
+        "schema": CONTEXT_SUMMARY_SCHEMA,
+        "version": "1.0",
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "context_dir": str(_context_dir(workspace)),
+        "state": "ready" if ready_count else "missing",
+        "ready_count": ready_count,
+        "missing": [item["name"] for item in files if item["state"] == "missing"],
+        "resume_read_order": RESUME_READ_ORDER,
+        "files": files,
+    }
+
+
+def _context_file_state(summary: dict[str, Any], name: str) -> dict[str, Any] | None:
+    files = summary.get("files")
+    if not isinstance(files, list):
+        return None
+    for item in files:
+        if isinstance(item, dict) and item.get("name") == name:
+            return item
+    return None
 
 
 def _node_workspaces(root: Path) -> list[Path]:

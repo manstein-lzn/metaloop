@@ -7,6 +7,7 @@ Codex Skill and any future thin wrappers that need the same `.metaloop/` truth.
 from metaloop_core.adaptive_loop import AdaptiveIteration, AdaptiveLoopState, append_iteration, decide_next, load_adaptive_loop, new_adaptive_loop, record_iteration, write_adaptive_loop
 from metaloop_core.activation import activate_once, activation_lease_path, activation_result_path, plan_activation, write_activation_result
 from metaloop_core.control import control_request_path, load_control_requests, pending_control_requests, write_control_request
+from metaloop_core.context import context_dir, context_file_path, context_summary, ensure_context_files, read_context_file, write_context_file
 from metaloop_core.event_log import EventLog
 from metaloop_core.execution import build_execution_report, load_execution_report, write_execution_report
 from metaloop_core.feedback import DiagnosisReport, ObservationReport, diagnose_next, observe_workspace, write_diagnosis_report, write_observation_report
@@ -37,8 +38,12 @@ __all__ = [
     "build_execution_report",
     "classify_dissatisfaction",
     "control_request_path",
+    "context_dir",
+    "context_file_path",
+    "context_summary",
     "decide_next",
     "diagnose_next",
+    "ensure_context_files",
     "load_adaptive_loop",
     "load_control_requests",
     "load_dispatch_map",
@@ -54,6 +59,7 @@ __all__ = [
     "observe_workspace",
     "relay_outbox",
     "record_iteration",
+    "read_context_file",
     "route_next_hop",
     "route_workspace",
     "tick_workspace",
@@ -67,6 +73,7 @@ __all__ = [
     "write_adaptive_loop",
     "write_activation_result",
     "write_control_request",
+    "write_context_file",
     "write_diagnosis_report",
     "write_execution_report",
     "write_observation_report",
