@@ -19,6 +19,7 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
     metaloop_dir = root / ".metaloop"
     capsule = _read_json(metaloop_dir / "mission_capsule.json")
     verification = _read_json(metaloop_dir / "verification_result.json")
+    review_result = _read_json(metaloop_dir / "review_result.json")
     execution = _read_json(metaloop_dir / "execution_report.json")
     adaptive = _read_json(metaloop_dir / "adaptive_loop.json")
     tick = _read_json(metaloop_dir / "tick_result.json")
@@ -44,6 +45,7 @@ def observe_node(workspace: str | Path = ".") -> dict[str, Any]:
         "best_metric": _best_metric(verification, adaptive),
         "last_event": _event_summary(latest_event),
         "last_verification": _verification_summary(verification),
+        "last_review": _review_summary(review_result, verification),
         "adaptive_decision": _string(latest_iteration.get("decision")) if latest_iteration else "",
         "waiting_on": _waiting_on(verification, pending_controls),
         "outbox_count": outbox_count,
@@ -184,6 +186,25 @@ def _verification_summary(verification: dict[str, Any] | None) -> dict[str, Any]
         "human_authority_blockers": _count_human_authority_blocking(verification.get("manual_validator_results")),
         "unsupported_blockers": _count_blocking(verification.get("unsupported_validator_results")),
     }
+
+
+def _review_summary(review_result: dict[str, Any] | None, verification: dict[str, Any] | None) -> dict[str, Any] | None:
+    if isinstance(review_result, dict):
+        return {
+            "decision": _string(review_result.get("decision")),
+            "reviewer": _string(review_result.get("reviewer")),
+            "reviewer_role": _string(review_result.get("reviewer_role")),
+            "created_at": _string(review_result.get("created_at")),
+        }
+    if isinstance(verification, dict) and isinstance(verification.get("review_result"), dict):
+        payload = verification["review_result"]
+        return {
+            "decision": _string(payload.get("decision")),
+            "reviewer": _string(payload.get("reviewer")),
+            "reviewer_role": _string(payload.get("reviewer_role")),
+            "created_at": _string(payload.get("created_at")),
+        }
+    return None
 
 
 def _waiting_on(verification: dict[str, Any] | None, pending_controls: list[str]) -> str:

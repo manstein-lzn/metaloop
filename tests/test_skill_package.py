@@ -935,6 +935,37 @@ def test_bundled_skill_kernel_does_not_hard_verify_manual_only_acceptance(tmp_pa
     assert verify_with_manual_acceptance.returncode == 1
     assert "verification: review_required" in verify_with_manual_acceptance.stdout
 
+    review_record = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "review",
+            "record",
+            "--decision",
+            "approved",
+            "--reviewer",
+            "codex-reviewer",
+            "--reviewer-role",
+            "reviewer",
+            "--evidence",
+            ".metaloop/execution_report.json",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert review_record.returncode == 0
+    reviewed_verify = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "verify", "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert reviewed_verify.returncode == 0
+    assert json.loads(reviewed_verify.stdout)["review_result"]["decision"] == "approved"
+
 
 def test_bundled_skill_kernel_supports_locked_json_metric_verification_spec(tmp_path) -> None:
     kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"

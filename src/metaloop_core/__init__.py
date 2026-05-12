@@ -18,7 +18,7 @@ from metaloop_core.relay import load_dispatch_map, load_outbox_items, relay_outb
 from metaloop_core.routing import job_envelope_hash, latest_adaptive_decision, route_next_hop, route_workspace, validate_global_blackboard, validate_job_envelope
 from metaloop_core.tick import tick_workspace, write_tick_result
 from metaloop_core.thread_registry import ThreadRegistry
-from metaloop_core.verification import VerificationSummary, load_verification_summary, verify_workspace
+from metaloop_core.verification import VerificationSummary, build_review_result, load_review_result, load_verification_summary, verify_workspace, write_review_result
 from metaloop_core.workspace import WorkspacePaths, WorkspaceState
 
 __all__ = [
@@ -36,6 +36,7 @@ __all__ = [
     "activation_result_path",
     "append_iteration",
     "build_execution_report",
+    "build_review_result",
     "classify_dissatisfaction",
     "control_request_path",
     "context_dir",
@@ -49,6 +50,7 @@ __all__ = [
     "load_dispatch_map",
     "load_execution_report",
     "load_outbox_items",
+    "load_review_result",
     "load_verification_summary",
     "job_envelope_hash",
     "latest_adaptive_decision",
@@ -78,5 +80,6 @@ __all__ = [
     "write_execution_report",
     "write_observation_report",
     "write_relay_result",
+    "write_review_result",
     "write_tick_result",
 ]

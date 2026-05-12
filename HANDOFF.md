@@ -67,6 +67,7 @@ Codex conversation
 - Observability / control / activation 支持只读 summary、显式控制文件和一次性 activation 扫描；它们都不应演变成后台调度器。
 - `scripts/metaloop_dashboard.py` 是只读 localhost dashboard；不要给它增加写 control、activate、relay、edit artifact 等 mutation endpoint。
 - Context checkpoints 支持 `.metaloop/context/resume_brief.md` 等轻量 Markdown 恢复摘要，解决长期 Codex thread 上下文膨胀后的接手问题。
+- `review_required` 不等于用户授权。它应由独立 Codex reviewer 检查证据并通过 `review record` 写 `.metaloop/review_result.json`。`human_acceptance_required` 才是用户专属授权。
 
 ## 运行验证
 
@@ -99,6 +100,7 @@ python3 -m venv .venv
 
 - Skill 仍然是软入口，不能单独提供不可绕过的强约束；强约束需要 hooks、sandbox 或 wrapper runtime，但只有真实团队任务证明必要时才添加。
 - VerificationSpec 可能被 agent 设计得过宽，锁定前需要 reviewer 或用户检查。
+- 不要让 worker thread 自己写 approved review result 来解除自己的 blocker。
 - 如果 validator 和被验证工程同仓库，严肃场景应记录 validator 版本/hash，避免 worker 同时改验证规则。
 - `tick`、`relay` 和 `activate` 都是显式 one-shot 文件操作，不是全自动后台调度。自动唤醒 agent thread、watcher、daemon 和消息队列仍不属于当前产品面。
 - Context checkpoint 质量仍需真实长任务验证：太短会无法恢复，太长会重新造成上下文负担。

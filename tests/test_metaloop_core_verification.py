@@ -5,7 +5,7 @@ from pathlib import Path
 
 from metaloop_core.execution import build_execution_report, write_execution_report
 from metaloop_core.specs import hash_object
-from metaloop_core.verification import verify_workspace
+from metaloop_core.verification import build_review_result, verify_workspace, write_review_result
 
 
 def _extension_spec() -> dict:
@@ -140,6 +140,51 @@ def test_verify_workspace_routes_manual_and_unsupported_blockers(tmp_path) -> No
     )
     unsupported = verify_workspace(tmp_path / "other")
     assert unsupported["status"] == "unsupported_verification_spec"
+
+
+def test_verify_workspace_applies_independent_review_result(tmp_path) -> None:
+    capsule = _write_capsule(
+        tmp_path,
+        [{"type": "manual_acceptance", "mode": "manual", "severity": "blocking", "description": "review boundary"}],
+    )
+    first = verify_workspace(tmp_path)
+    assert first["status"] == "review_required"
+
+    review = build_review_result(
+        workspace=tmp_path,
+        capsule=capsule,
+        decision="approved",
+        reviewer="codex-reviewer",
+        reviewer_role="reviewer",
+        evidence=[".metaloop/execution_report.json", ".metaloop/verification_result.json"],
+        notes="Evidence matches the locked review boundary.",
+    )
+    write_review_result(tmp_path, review)
+
+    second = verify_workspace(tmp_path)
+    assert second["status"] == "completed_verified"
+    assert second["review_result"]["decision"] == "approved"
+
+
+def test_verify_workspace_rejects_worker_or_stale_review_result(tmp_path) -> None:
+    capsule = _write_capsule(
+        tmp_path,
+        [{"type": "manual_acceptance", "mode": "manual", "severity": "blocking", "description": "review boundary"}],
+    )
+    worker_review = build_review_result(
+        workspace=tmp_path,
+        capsule=capsule,
+        decision="approved",
+        reviewer="worker",
+        reviewer_role="worker",
+        evidence=[".metaloop/execution_report.json"],
+    )
+    write_review_result(tmp_path, worker_review)
+
+    result = verify_workspace(tmp_path)
+
+    assert result["status"] == "review_required"
+    assert any("reviewer_role" in item["message"] for item in result["warnings"])
 
 
 def test_verify_workspace_rejects_tampered_spec_hash(tmp_path) -> None:

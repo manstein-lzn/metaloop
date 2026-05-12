@@ -129,6 +129,7 @@ python3 "$KERNEL" --workspace . event list --limit 5
 python3 "$KERNEL" --workspace . design ...
 python3 "$KERNEL" --workspace . run --command "<command>" --evidence "<note>"
 python3 "$KERNEL" --workspace . verify
+python3 "$KERNEL" --workspace . review record --decision approved --reviewer "<reviewer>" --evidence ".metaloop/verification_result.json"
 python3 "$KERNEL" --workspace . adaptive record ...
 python3 "$KERNEL" --workspace . event append ...
 python3 "$KERNEL" --workspace . context init
@@ -150,11 +151,21 @@ For metric, benchmark, research, promotion, or quality-breakthrough tasks,
 `file_exists` is not enough. Add metric gates, baseline comparisons, resource
 gates, forbidden claims, attempt evidence, or blocking manual review.
 
+Validator quality ladder:
+
+- Strong: metric gates, schema/field checks, command tests, artifact hashes,
+  non-regression checks, official evaluator output, forbidden path/claim gates.
+- Weak: bare `file_exists` and broad `file_contains`; use them only as smoke
+  checks or pair them with stronger evidence.
+- Not evidence: worker self-report, chat claims, or keyword presence without a
+  locked artifact or command behind it.
+
 Blocking review has two statuses:
 
 - `review_required`: quality, evidence, claim, or domain judgment can be
   delegated to an independent Codex reviewer. The worker may not self-approve;
-  a reviewer must inspect locked evidence and record the outcome.
+  a reviewer must inspect locked evidence and record the outcome with
+  `review record`, then verification must be rerun.
 - `human_acceptance_required`: user-only authority is required. Do not delegate
   cost, resource, destructive action, external publication, official
   promotion, credential, legal, or explicitly non-delegable decisions unless
@@ -185,6 +196,18 @@ before expensive work, honor resource/control gates; after an attempt, write
 evidence, verify, and record adaptive diagnosis; before completion, rely on
 locked verification; before handoff, update event/context/thread or outbox
 state.
+
+If verification returns `review_required`, do not ask the user by default.
+Register or use an independent Codex reviewer thread when available, have it
+inspect the Mission Capsule, ExecutionReport, VerificationResult, metrics, and
+claimed conclusions, then write `review_result.json` through `review record`.
+Only ask the user when the gate is `human_acceptance_required` or when reviewer
+independence is impossible.
+
+`.metaloop/` is local operational state and should normally be gitignored in
+target projects. Keep summaries compact, archive only when useful, and do not
+commit noisy revisions or transient event logs unless the team explicitly wants
+an audit trail in git.
 
 ## Validation Discipline
 

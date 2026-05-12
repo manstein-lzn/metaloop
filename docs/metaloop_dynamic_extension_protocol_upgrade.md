@@ -126,6 +126,8 @@ Verifier behavior:
 ```text
 executable + blocking + failed -> failed
 manual + blocking + delegatable -> review_required
+manual + blocking + delegatable + approved review_result -> completed_verified
+manual + blocking + delegatable + rejected/needs_changes review_result -> failed
 manual + blocking + user authority -> human_acceptance_required
 unsupported + blocking -> unsupported_verification_spec
 advisory unresolved/failed -> warning, never hard proof
@@ -161,6 +163,10 @@ Task-specific extension specs must include risk coverage before lock:
 - `risk_checks` or `review_questions` must be non-empty for non-generic domains.
 - known gaps must be recorded and surfaced in VerificationResult.
 - no validator may be silently upgraded from manual/unsupported to hard verified.
+- delegatable manual gates are resolved only by `.metaloop/review_result.json`.
+- review results must match the current capsule id, capsule revision, and
+  VerificationSpec hash.
+- reviewer role must be independent from the worker role.
 
 ## Revision Discipline
 
@@ -197,6 +203,8 @@ The kernel may only execute bundled generic validators for now, but the protocol
 - validators outside the locked ExtensionSpec language are rejected before lock.
 - declared but unimplemented executable blocking validator returns `unsupported_verification_spec`.
 - declared delegatable manual blocking validator returns `review_required`.
+- approved independent review result can resolve delegatable manual blockers.
+- stale or worker-authored review result does not resolve `review_required`.
 - declared user-authority manual blocking validator returns `human_acceptance_required`.
 - advisory failed/unsupported validators appear in warnings.
 - `json_field_exists`, `file_contains`, and `artifact_hash` work.

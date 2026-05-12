@@ -78,6 +78,30 @@ def test_core_and_skill_kernel_verify_same_manual_status(tmp_path) -> None:
     assert core_result["manual_validator_results"][0]["reviewer"] == "codex_reviewer"
     assert skill_result["manual_validator_results"][0]["reviewer"] == "codex_reviewer"
 
+    review = _run(
+        [
+            "review",
+            "record",
+            "--decision",
+            "approved",
+            "--reviewer",
+            "codex-reviewer",
+            "--reviewer-role",
+            "reviewer",
+            "--evidence",
+            ".metaloop/execution_report.json",
+        ],
+        tmp_path,
+    )
+    assert review.returncode == 0, review.stderr
+
+    core_reviewed = verify_workspace(tmp_path, write=False, update_status=False)
+    skill_reviewed = _run(["verify", "--json"], tmp_path)
+    assert skill_reviewed.returncode == 0, skill_reviewed.stderr
+    skill_reviewed_result = json.loads(skill_reviewed.stdout)
+    assert core_reviewed["status"] == skill_reviewed_result["status"] == "completed_verified"
+    assert core_reviewed["review_result"]["decision"] == skill_reviewed_result["review_result"]["decision"] == "approved"
+
 
 def test_core_and_skill_kernel_share_thread_registry_semantics(tmp_path) -> None:
     register = _run(

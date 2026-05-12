@@ -19,6 +19,7 @@ EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
 EXTENSION_SPEC_SCHEMA = "metaloop.extension_spec"
 VERIFICATION_SPEC_SCHEMA = "metaloop.verification_spec"
 VERIFICATION_SCHEMA = "metaloop.lightweight_verification_result"
+REVIEW_RESULT_SCHEMA = "metaloop.review_result"
 THREAD_REGISTRY_SCHEMA = "metaloop.thread_registry"
 EVENT_SCHEMA = "metaloop.event"
 JOB_ENVELOPE_SCHEMA = "metaloop.job_envelope"
@@ -194,6 +195,20 @@ def main(argv: list[str] | None = None) -> int:
     verify_parser = subparsers.add_parser("verify", help="Verify the current lightweight Mission Capsule.")
     verify_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
+    review_parser = subparsers.add_parser("review", help="Record or inspect independent review of delegatable manual gates.")
+    review_subparsers = review_parser.add_subparsers(dest="review_command", required=True)
+
+    review_status_parser = review_subparsers.add_parser("status", help="Inspect .metaloop/review_result.json.")
+    review_status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
+    review_record_parser = review_subparsers.add_parser("record", help="Write .metaloop/review_result.json for review_required gates.")
+    review_record_parser.add_argument("--decision", required=True, choices=["approved", "rejected", "needs_changes"], help="Reviewer decision.")
+    review_record_parser.add_argument("--reviewer", required=True, help="Reviewer identity or Codex thread label.")
+    review_record_parser.add_argument("--reviewer-role", default="reviewer", help="Must be independent from worker role.")
+    review_record_parser.add_argument("--evidence", action="append", required=True, help="Evidence inspected by the reviewer. Repeatable.")
+    review_record_parser.add_argument("--notes", default="", help="Reviewer notes.")
+    review_record_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+
     mark_parser = subparsers.add_parser("mark", help="Mark capsule status without mutating locked contract fields.")
     mark_parser.add_argument("--status", required=True, choices=sorted(CAPSULE_STATUSES))
     mark_parser.add_argument("--reason", default="", help="Reason for status transition.")
@@ -290,6 +305,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run(workspace, args)
     if args.command == "verify":
         return _verify(workspace, as_json=args.json)
+    if args.command == "review":
+        return _review(workspace, args)
     if args.command == "mark":
         return _mark(workspace, args.status, args.reason)
     if args.command == "adaptive":
@@ -315,6 +332,7 @@ def _status(workspace: Path, *, as_json: bool) -> int:
     print(f"current_status: {status['capsule'].get('current_status') or '-'}")
     print(f"execution: {status['execution']['state']} status={status['execution'].get('status') or '-'}")
     print(f"verification: {status['verification']['state']} status={status['verification'].get('status') or '-'}")
+    print(f"review: {status['review']['state']} decision={status['review'].get('decision') or '-'}")
     print(f"adaptive_loop: {status['adaptive_loop']['state']} status={status['adaptive_loop'].get('status') or '-'}")
     print(f"context: {status['context']['state']} ready={status['context'].get('ready_count', 0)}")
     print(f"threads: {status['threads']['state']} count={status['threads'].get('count', 0)}")
@@ -372,6 +390,7 @@ def _control(workspace: Path, args: argparse.Namespace) -> int:
 def _brief_node_summary(node: dict[str, Any]) -> dict[str, Any]:
     context = node.get("context") if isinstance(node.get("context"), dict) else {}
     verification = node.get("last_verification") if isinstance(node.get("last_verification"), dict) else {}
+    review = node.get("last_review") if isinstance(node.get("last_review"), dict) else {}
     event = node.get("last_event") if isinstance(node.get("last_event"), dict) else {}
     return {
         "schema": "metaloop.node_brief",
@@ -385,6 +404,8 @@ def _brief_node_summary(node: dict[str, Any]) -> dict[str, Any]:
         "pending_controls": node.get("pending_controls", []),
         "verification_status": verification.get("status", ""),
         "verification_reason": verification.get("reason", ""),
+        "review_decision": review.get("decision", ""),
+        "reviewer": review.get("reviewer", ""),
         "adaptive_decision": node.get("adaptive_decision", ""),
         "latest_event": event.get("summary", ""),
         "best_metric": node.get("best_metric"),
@@ -419,6 +440,7 @@ def _print_brief_node(node: dict[str, Any]) -> None:
     print(f"goal: {node.get('goal') or '-'}")
     print(f"plan: {node.get('current_plan') or '-'}")
     print(f"verification: {node.get('verification_status') or '-'}")
+    print(f"review: {node.get('review_decision') or '-'} reviewer={node.get('reviewer') or '-'}")
     print(f"decision: {node.get('adaptive_decision') or '-'}")
     print(f"context: {node.get('context_state') or '-'} ready={node.get('context_ready_count', 0)}")
     print(f"next_action: {node.get('next_action') or '-'}")
@@ -1171,9 +1193,12 @@ def _verify(workspace: Path, *, as_json: bool) -> int:
     human_authority_blockers = [result for result in blocking_manual if _requires_human_authority(result)]
     review_blockers = [result for result in blocking_manual if not _requires_human_authority(result)]
     blocking_unsupported = [result for result in unsupported_results if result.get("severity") == "blocking"]
+    review_result, review_errors = _load_review_result(workspace, capsule)
     review = capsule.get("verification_review", {})
     if review.get("known_gaps"):
         warnings.extend({"type": "known_gap", "message": item} for item in review["known_gaps"])
+    if review_errors:
+        warnings.extend({"type": "review_result_invalid", "message": item} for item in review_errors)
 
     if blocking_failures:
         status = "failed"
@@ -1185,8 +1210,16 @@ def _verify(workspace: Path, *, as_json: bool) -> int:
         status = "human_acceptance_required"
         reason = "One or more blocking validators require user authority."
     elif review_blockers:
-        status = "review_required"
-        reason = "One or more blocking validators require independent reviewer judgment."
+        decision = str(review_result.get("decision") or "") if isinstance(review_result, dict) and not review_errors else ""
+        if decision == "approved":
+            status = "completed_verified"
+            reason = "Executable validators passed and independent reviewer gates were approved."
+        elif decision in {"rejected", "needs_changes"}:
+            status = "failed"
+            reason = "Independent reviewer rejected the evidence or requested changes."
+        else:
+            status = "review_required"
+            reason = "One or more blocking validators require independent reviewer judgment."
     elif not all_executable_results:
         status = "missing_verification_plan"
         reason = "No executable validators found; add executable checks before automated completion."
@@ -1204,11 +1237,74 @@ def _verify(workspace: Path, *, as_json: bool) -> int:
         unsupported_results=unsupported_results,
         warnings=warnings,
         capsule=capsule,
+        review_result=review_result if isinstance(review_result, dict) and not review_errors else None,
+        review_errors=review_errors,
     )
     _write_verification_result(workspace, result)
     if status == "completed_verified":
         _update_capsule_status(workspace, "completed", reason)
     return _print_verification(result, as_json=as_json, exit_code=0 if status == "completed_verified" else 1)
+
+
+def _review(workspace: Path, args: argparse.Namespace) -> int:
+    capsule, errors = _load_valid_capsule(workspace)
+    if capsule is None:
+        print("No valid Mission Capsule found.", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    if args.review_command == "status":
+        payload, review_errors = _load_review_result(workspace, capsule)
+        if args.json:
+            print(json.dumps({"review_result": payload, "errors": review_errors}, indent=2, ensure_ascii=False))
+            return 0 if not review_errors else 1
+        if payload is None:
+            print(f"review: missing path={_review_result_path(workspace)}")
+            return 1
+        print(f"review: {payload.get('decision')}")
+        print(f"reviewer: {payload.get('reviewer')} role={payload.get('reviewer_role')}")
+        for error in review_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 0 if not review_errors else 1
+    if args.review_command == "record":
+        result = _build_review_result(
+            workspace,
+            capsule,
+            decision=args.decision,
+            reviewer=args.reviewer,
+            reviewer_role=args.reviewer_role,
+            evidence=args.evidence,
+            notes=args.notes,
+        )
+        review_errors = _validate_review_result(result, capsule)
+        if review_errors:
+            if args.json:
+                print(json.dumps({"review_result": result, "errors": review_errors}, indent=2, ensure_ascii=False))
+            else:
+                print("review_invalid:", file=sys.stderr)
+                for error in review_errors:
+                    print(f"- {error}", file=sys.stderr)
+            return 1
+        _write_review_result(workspace, result)
+        _append_event(
+            workspace,
+            {
+                "type": "verification",
+                "agent": args.reviewer,
+                "thread_role": args.reviewer_role,
+                "summary": f"Recorded independent review decision: {args.decision}.",
+                "evidence": args.evidence,
+                "decision": args.decision,
+                "next_action": "rerun_verify_to_apply_review_result",
+            },
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"review: {result['decision']}")
+            print(f"result: {_review_result_path(workspace)}")
+        return 0
+    return 2
 
 
 def _mark(workspace: Path, status: str, reason: str) -> int:
@@ -1505,6 +1601,7 @@ def _observe_node(workspace: Path) -> dict[str, Any]:
     capsule = _read_json(_metaloop_dir(workspace) / "mission_capsule.json")
     execution = _read_json(_metaloop_dir(workspace) / "execution_report.json")
     verification = _read_json(_metaloop_dir(workspace) / "verification_result.json")
+    review_result = _read_json(_review_result_path(workspace))
     adaptive = _read_json(_adaptive_loop_path(workspace))
     tick = _read_json(_metaloop_dir(workspace) / "tick_result.json")
     relay = _read_json(_metaloop_dir(workspace) / "relay_result.json")
@@ -1525,6 +1622,7 @@ def _observe_node(workspace: Path) -> dict[str, Any]:
         "best_metric": verification.get("best_metric") if isinstance(verification, dict) and isinstance(verification.get("best_metric"), dict) else None,
         "last_event": _event_summary(events[-1] if events else None),
         "last_verification": _verification_summary(verification),
+        "last_review": _review_summary(review_result, verification),
         "adaptive_decision": str(latest_iteration.get("decision") or "") if latest_iteration else "",
         "waiting_on": _summary_waiting_on(verification, pending_controls),
         "outbox_count": _count_json_files(_metaloop_dir(workspace) / "outbox"),
@@ -1696,6 +1794,7 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     adaptive_path = _adaptive_loop_path(workspace)
     execution_path = _metaloop_dir(workspace) / "execution_report.json"
     verification_path = _metaloop_dir(workspace) / "verification_result.json"
+    review_path = _review_result_path(workspace)
     threads_path = _thread_registry_path(workspace)
     event_path = _event_log_path(workspace)
     context = _context_summary(workspace)
@@ -1703,6 +1802,7 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     adaptive_loop = _read_json(adaptive_path)
     execution = _read_json(execution_path)
     verification = _read_json(verification_path)
+    review_result = _read_json(review_path)
     threads = _read_json(threads_path)
     events, event_errors = _read_events(workspace)
     capsule_state = {"state": "missing", "path": None, "current_status": None}
@@ -1735,6 +1835,17 @@ def _read_status(workspace: Path) -> dict[str, Any]:
     verification_state = {"state": "missing", "path": None, "status": None}
     if isinstance(verification, dict):
         verification_state = {"state": "ready", "path": str(verification_path), "status": verification.get("status")}
+    review_state = {"state": "missing", "path": str(review_path), "decision": None}
+    if isinstance(review_result, dict):
+        review_errors = _validate_review_result(review_result, capsule if isinstance(capsule, dict) else None)
+        review_state = {
+            "state": "invalid" if review_errors else "ready",
+            "path": str(review_path),
+            "decision": review_result.get("decision"),
+            "reviewer": review_result.get("reviewer"),
+            "reviewer_role": review_result.get("reviewer_role"),
+            "errors": review_errors,
+        }
     threads_state = {"state": "missing", "path": str(threads_path), "count": 0}
     if isinstance(threads, dict):
         thread_errors = _validate_thread_registry(threads)
@@ -1759,6 +1870,7 @@ def _read_status(workspace: Path) -> dict[str, Any]:
         "adaptive_loop": adaptive_state,
         "execution": execution_state,
         "verification": verification_state,
+        "review": review_state,
         "context": {
             "state": context["state"],
             "path": context["context_dir"],
@@ -1810,6 +1922,8 @@ def _verification_result(
     warnings: list[dict[str, Any]] | None = None,
     errors: list[str] | None = None,
     capsule: dict[str, Any] | None = None,
+    review_result: dict[str, Any] | None = None,
+    review_errors: list[str] | None = None,
 ) -> dict[str, Any]:
     extension_spec = capsule.get("extension_spec", {}) if capsule else {}
     verification_spec = capsule.get("verification_spec", {}) if capsule else {}
@@ -1828,6 +1942,8 @@ def _verification_result(
         "verification_spec_hash": verification_spec.get("spec_hash"),
         "errors": errors or [],
         "warnings": warnings or [],
+        "review_result": _review_result_summary(review_result),
+        "review_result_errors": review_errors or [],
         "hard_validator_results": hard_results,
         "forbidden_path_results": forbidden_results,
         "manual_validator_results": manual_results or [],
@@ -1841,6 +1957,94 @@ def _write_verification_result(workspace: Path, result: dict[str, Any]) -> None:
         json.dumps(result, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+def _review_result_path(workspace: Path) -> Path:
+    return _metaloop_dir(workspace) / "review_result.json"
+
+
+def _build_review_result(
+    workspace: Path,
+    capsule: dict[str, Any],
+    *,
+    decision: str,
+    reviewer: str,
+    reviewer_role: str,
+    evidence: list[str],
+    notes: str,
+) -> dict[str, Any]:
+    verification_spec = capsule.get("verification_spec", {}) if isinstance(capsule.get("verification_spec"), dict) else {}
+    return {
+        "schema": REVIEW_RESULT_SCHEMA,
+        "version": "1.0",
+        "review_id": _new_id("review"),
+        "created_at": _now(),
+        "workspace": str(workspace),
+        "capsule_id": capsule.get("capsule_id"),
+        "capsule_revision": capsule.get("revision"),
+        "verification_spec_hash": verification_spec.get("spec_hash"),
+        "decision": decision,
+        "reviewer": reviewer,
+        "reviewer_role": reviewer_role,
+        "evidence": list(evidence),
+        "notes": notes,
+    }
+
+
+def _write_review_result(workspace: Path, result: dict[str, Any]) -> None:
+    _metaloop_dir(workspace).mkdir(parents=True, exist_ok=True)
+    _review_result_path(workspace).write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _load_review_result(workspace: Path, capsule: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, list[str]]:
+    path = _review_result_path(workspace)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return None, []
+    except json.JSONDecodeError as exc:
+        return None, [f"review_result.json is invalid JSON: {exc}"]
+    errors = _validate_review_result(payload, capsule)
+    return (payload if isinstance(payload, dict) else None), errors
+
+
+def _validate_review_result(payload: Any, capsule: dict[str, Any] | None = None) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["review_result must be a JSON object"]
+    errors: list[str] = []
+    if payload.get("schema") != REVIEW_RESULT_SCHEMA:
+        errors.append(f"schema must be {REVIEW_RESULT_SCHEMA}")
+    for key in ["version", "review_id", "created_at", "decision", "reviewer", "reviewer_role"]:
+        if not isinstance(payload.get(key), str) or not payload.get(key):
+            errors.append(f"{key} must be a non-empty string")
+    if payload.get("decision") not in {"approved", "rejected", "needs_changes"}:
+        errors.append("decision must be approved, rejected, or needs_changes")
+    if str(payload.get("reviewer_role") or "").lower() in {"worker", "worker-main", "primary_worker"}:
+        errors.append("reviewer_role must be independent from the worker role")
+    if not isinstance(payload.get("evidence"), list) or not all(isinstance(item, str) and item for item in payload.get("evidence", [])):
+        errors.append("evidence must be a non-empty list of strings")
+    if capsule:
+        verification_spec = capsule.get("verification_spec", {}) if isinstance(capsule.get("verification_spec"), dict) else {}
+        if payload.get("capsule_id") != capsule.get("capsule_id"):
+            errors.append("capsule_id does not match current Mission Capsule")
+        if payload.get("capsule_revision") != capsule.get("revision"):
+            errors.append("capsule_revision does not match current Mission Capsule")
+        if payload.get("verification_spec_hash") != verification_spec.get("spec_hash"):
+            errors.append("verification_spec_hash does not match current VerificationSpec")
+    return errors
+
+
+def _review_result_summary(review_result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(review_result, dict):
+        return None
+    return {
+        "review_id": review_result.get("review_id"),
+        "decision": review_result.get("decision"),
+        "reviewer": review_result.get("reviewer"),
+        "reviewer_role": review_result.get("reviewer_role"),
+        "evidence": review_result.get("evidence") if isinstance(review_result.get("evidence"), list) else [],
+        "created_at": review_result.get("created_at"),
+    }
 
 
 def _print_verification(result: dict[str, Any], *, as_json: bool, exit_code: int) -> int:
@@ -2621,6 +2825,25 @@ def _verification_summary(verification: Any) -> dict[str, Any] | None:
         "human_authority_blockers": _count_human_authority_blocking(verification.get("manual_validator_results")),
         "unsupported_blockers": _count_blocking(verification.get("unsupported_validator_results")),
     }
+
+
+def _review_summary(review_result: Any, verification: Any) -> dict[str, Any] | None:
+    if isinstance(review_result, dict):
+        return {
+            "decision": str(review_result.get("decision") or ""),
+            "reviewer": str(review_result.get("reviewer") or ""),
+            "reviewer_role": str(review_result.get("reviewer_role") or ""),
+            "created_at": str(review_result.get("created_at") or ""),
+        }
+    if isinstance(verification, dict) and isinstance(verification.get("review_result"), dict):
+        payload = verification["review_result"]
+        return {
+            "decision": str(payload.get("decision") or ""),
+            "reviewer": str(payload.get("reviewer") or ""),
+            "reviewer_role": str(payload.get("reviewer_role") or ""),
+            "created_at": str(payload.get("created_at") or ""),
+        }
+    return None
 
 
 def _summary_waiting_on(verification: Any, pending_controls: list[str]) -> str:

@@ -65,6 +65,8 @@ Thread context is useful but not authoritative. Shared truth must live in `.meta
 - locked `extension_spec` and `verification_spec` inside the capsule
 - `execution_report.json`
 - `verification_result.json`
+- `review_result.json` when an independent reviewer resolves
+  `review_required`
 - `threads.json`
 - `event_log.jsonl`
 - `context/resume_brief.md`
@@ -109,5 +111,7 @@ Events do not change locked contracts and do not prove completion. They are the 
 - Do not use one-shot `codex exec` as the default intelligence layer for complex projects.
 - Do not build an automatic multi-agent scheduler before real usage demands it.
 - Do not let worker threads modify locked verification after seeing results.
+- Do not let a worker thread approve its own `review_required` gate; use an
+  independent reviewer thread and record `review_result.json`.
 - Do not use `file_exists` alone for metric, benchmark, promotion, or research breakthrough tasks.
 - If the core metric gate fails, report target failure even when artifacts were produced.
