@@ -1,17 +1,17 @@
 ---
 name: metaloop
-description: "Use when a local project task needs MetaLoop's lightweight protocol: deep task design before execution, Mission Capsule boundaries, structured acceptance, independent verification, repair/redesign/resume decisions, or a skill-first but not prompt-only workflow around Codex. Trigger for requests to use MetaLoop, design a mission, create or revise a Mission Capsule, run/verify/resume a MetaLoop task, or decide whether unsatisfactory output needs repair or redesign."
+description: "Use when a local project task needs MetaLoop's lightweight protocol: deep design before execution, structured acceptance, independent verification, repair/redesign/resume decisions, long-task feedback, or skill-first but code-backed task governance around Codex."
 ---
 
 # MetaLoop
 
-MetaLoop is a lightweight protocol layer for stabilizing Codex work on complex local tasks.
+MetaLoop stabilizes complex Codex work by making the goal, success criteria,
+evidence, and stopping conditions explicit before execution.
 
-This skill is deployable as a self-contained Codex Skill. It includes a lightweight kernel script under `scripts/metaloop_kernel.py`; do not assume a separate `metaloop` package is installed in the user's environment.
+This is a self-contained Codex Skill. Use `scripts/metaloop_kernel.py` for
+state and checks; do not assume a separate `metaloop` command is installed.
 
-Use this skill as the entry and alignment layer. Use the bundled kernel for state and checks. Do not treat natural-language skill instructions as the enforcement layer.
-
-## Core Rule
+## Operating Contract
 
 ```text
 Prompt handles intelligence. Code handles truth.
@@ -20,282 +20,160 @@ Bundled kernel / schema / validators handle checks and state.
 Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints when needed.
 ```
 
-MetaLoop is skill-first, not prompt-only.
-
-Use prompts, examples, and Codex reasoning for understanding, diagnosis, strategy, experiment design, and next-plan decisions. Use code and `.metaloop/` artifacts for durable state, locked contracts, verification, audit, and recovery. Do not add framework code when a small prompt protocol plus durable artifact is enough.
+MetaLoop is skill-first, not prompt-only. Keep the prompt surface short and
+outcome-first; use `.metaloop/` artifacts for durable truth.
 
 ## User Burden Rule
 
-The user should not have to know MetaLoop's internal protocol. When this skill is invoked, Codex owns the MetaLoop workflow.
-
-Do not require the user to prompt for Mission Capsules, VerificationSpecs, Adaptive Loops, blackboards, dispatch maps, job envelopes, tick, relay, or role decomposition. Infer which protocol pieces are needed from the task shape, explain the proposed design in plain language, and ask only targeted questions that are genuinely blocking.
-
-The user supplies intent, priorities, constraints, and acceptance judgment. Codex supplies the protocol design, artifact layout, verification gates, feedback loop, and handoff plan.
-
-For complex or open-ended tasks, the first MetaLoop response must:
-
-- inspect the current `.metaloop/` state and relevant project context before execution
-- restate the inferred goal, constraints, non-goals, and unknowns
-- propose the Mission Capsule and VerificationSpec strategy
-- decide whether one node is enough or whether routable work units are needed
-- identify the minimum user confirmations required before locking the contract
-- refuse to start implementation, training, experiments, or broad edits until the contract and verification plan are clear
-
-If user input is missing but a conservative assumption is safe, state the assumption and proceed with design. If the missing input changes the target, acceptance, cost, data access, external resources, or risk profile, ask a short concrete question before locking the capsule.
-
-## Design Autonomy Protocol
-
-The skill should reduce user burden by making the first design move itself.
-When invoked on a non-trivial task, Codex should inspect the project, classify
-the task shape, and choose the smallest adequate protocol shape before
-execution:
-
-- `single_node` when one Mission Capsule and one local loop are enough
-- `multi_thread` when several persistent threads help but one workspace truth
-  remains authoritative
-- `routable_work_units` when separate responsibilities need envelopes, outbox,
-  relay, and shared blackboard facts
-
-Do not ask the user to choose these labels. Do not ask the user to hand-author
-MetaLoop internals. Ask only concrete blocking questions that change the
-contract, risk, cost, or acceptance target.
-
-The first design response should normally include:
-
-- inferred goal, non-goals, constraints, and unknowns
-- the chosen protocol shape
-- the proposed Mission Capsule and VerificationSpec strategy
-- the minimum user confirmations needed before locking the capsule
-- the target-project artifacts that may be created or revised
-
-If the task can proceed safely with a conservative assumption, state the
-assumption and continue with design. If it cannot, stop and ask a short, direct
-question.
-
-## Current Product Shape
-
-Prefer this skill-first shape for complex projects:
+The user should be able to say only:
 
 ```text
-Codex Skill entry
-  -> minimal bundled kernel for state / lock / verify / audit
-  -> one or more persistent Codex agent threads for intelligence and responsibility
-  -> Adaptive Goal Loop for iterative problem solving
-  -> shared truth through .metaloop artifacts, not through chat memory alone
+Use $metaloop. I want to <goal>.
 ```
 
-For complex or open-ended work, use MetaLoop as a generic Adaptive Goal Loop, not a research-only workflow:
+Do not require the user to ask for Mission Capsules, VerificationSpecs,
+Adaptive Loops, blackboards, dispatch maps, job envelopes, tick, relay, or role
+decomposition. Infer the smallest adequate protocol shape, explain it in plain
+project terms, and ask only questions that change the target, acceptance,
+cost, data access, external resources, destructive risk, or permissions.
+
+## First Response
+
+For non-trivial work, give a short preamble before tool use:
 
 ```text
-Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan
+I will inspect the current MetaLoop state and the relevant project context,
+then propose the goal contract and verification gates before execution.
 ```
 
-Every domain uses the same loop. Domain extensions define evidence language, metrics, risks, and validators; they do not replace the loop with a separate task-specific process.
+Then do a bounded inspection:
 
-Do not rebuild an external orchestration loop that repeatedly starts one-shot `codex exec` workers for complex work. One-shot execution is acceptable for smoke tests, CI wrappers, or simple command-based runs, but the default mental model is persistent Codex thread agents using this kernel as their protocol backend.
+- check `.metaloop/` status, thread registry, and recent events when present
+- read README/STATE/HANDOFF or equivalent project entry docs when present
+- inspect only files needed to understand the task surface
+- continue searching only when a missing fact affects scope, acceptance, risk,
+  or verification
+- write important long-task discoveries into `.metaloop/event_log.jsonl`
 
-For complex projects, multiple persistent threads may be useful when the responsibilities are truly different:
+Do not stall in open-ended research. Stop inspection when you can state a
+defensible goal, non-goals, constraints, risks, evidence, and verification plan.
 
-- `interface`: talks with the user and keeps the product/project conversation coherent.
-- `design`: explores requirements deeply and drafts Mission Capsule plus VerificationSpec.
-- `worker`: executes against the locked capsule without weakening verification.
-- `reviewer`: reviews evidence and contract fit independently from worker self-report.
-- `verifier`: runs locked validators and classifies completion, repair, redesign, or limitation status.
+## Design Output
 
-Register persistent agent threads in `.metaloop/threads.json` through the bundled kernel when thread ids are available:
+Before execution, produce a plain-language design that answers:
 
-```bash
-python3 "$KERNEL" --workspace . threads register \
-  --role design \
-  --role-type design \
-  --thread-id "<codex-thread-id>" \
-  --responsibility "Draft Mission Capsule and VerificationSpec before execution."
-```
+- Goal: what outcome is being pursued?
+- Success: what observable result proves enough progress or completion?
+- Non-goals: what should not be changed or claimed?
+- Constraints: what limits cost, time, data, permissions, resources, or scope?
+- Evidence: what artifacts, metrics, commands, tests, or review notes will be
+  used?
+- Stopping conditions: when should Codex complete, continue, repair, redesign,
+  pivot, stop, or escalate?
+- Protocol shape: `single_node`, `multi_thread`, or `routable_work_units`,
+  chosen by Codex, not the user.
 
-Thread context is useful but not authoritative. The Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult, decisions, attempts, and thread registry under `.metaloop/` are the operational truth.
+Lock the corresponding Mission Capsule and VerificationSpec with the bundled
+kernel before implementation when the task is substantial or verification
+matters.
 
-For long-running goal-seeking tasks, each attempt should preserve what was learned, not just whether a command ran. Record or maintain an adaptive loop state when useful:
+## Protocol Shape
 
-- goal and current plan
-- observation from the latest attempt
-- evaluation against the locked criteria
-- diagnosis of why it did or did not work
-- decision: `complete`, `continue`, `repair`, `redesign`, `pivot`, `stop`, or `escalate`
-- next plan and evidence
+Use the smallest shape that preserves correctness and recovery:
 
-For long-running work, record important observations and decisions as lightweight events instead of relying on private thread memory:
+- `single_node`: one Mission Capsule, one ExecutionReport, one
+  VerificationResult, and one Adaptive Goal Loop are enough.
+- `multi_thread`: several persistent Codex threads help, but one workspace
+  truth remains authoritative through `.metaloop/`.
+- `routable_work_units`: separate responsibilities or workspaces need
+  `job_envelope.json`, `global_blackboard.json`, outbox records, `tick`, and
+  `relay`.
 
-```bash
-python3 "$KERNEL" --workspace . event append \
-  --type observation \
-  --agent worker \
-  --summary "CUDA unavailable; full training cannot start." \
-  --evidence "nvidia-smi failed" \
-  --next-action "mark blocked or redesign resource gate"
-```
+Do not use routable work units just because a task is large. Use them only for
+real responsibility isolation, cross-workspace handoff, hard metric gates,
+different resource profiles, or strong context isolation.
 
-Events are not a scheduler. They are a compact audit trail that helps agents resume, hand off, and explain why a long task changed direction.
+## Kernel Use
 
-For tasks that are too large for one reliable work unit, design a routable work-unit network without making the user specify the machinery:
-
-```text
-global_blackboard.json  -> stable shared facts only
-job_envelope.json       -> task handoff contract
-dispatch_map.json       -> static address book for downstream workspaces
-tick                    -> one local route/effect step
-relay                   -> one explicit outbox delivery step
-```
-
-Use this shape only when the task naturally needs isolated responsibilities, long-running attempts, hard metric gates, independent diagnosis, or cross-node handoff. Keep it minimal: start with one node unless separate responsibilities are necessary.
-
-The blackboard is a fact registry, not a shared mind. Job envelopes are contracts, not chat transcripts. Tick and relay are one-shot file operations, not daemons or schedulers.
-
-## When To Use
-
-Use MetaLoop when the task benefits from at least one of:
-
-- deep design before implementation
-- iterative goal seeking where success is uncertain or requires repeated attempts
-- explicit scope, non-goals, constraints, or philosophical tradeoffs
-- structured acceptance criteria or evidence requirements
-- independent verification instead of trusting Codex self-report
-- repair/redesign/resume decisions after failure or dissatisfaction
-- durable `.metaloop/` artifacts for handoff or recovery
-
-Do not use MetaLoop as a heavy multi-agent runtime by default. Prefer one Codex agent plus a structured Mission Capsule unless the task proves it needs more.
-
-## Workflow
-
-Set the skill kernel path before running commands:
+Set the kernel path relative to this skill:
 
 ```bash
 KERNEL="<skill_dir>/scripts/metaloop_kernel.py"
 ```
 
-Use `python3 "$KERNEL" ...` from the target project workspace. If the runtime exposes the skill directory path differently, resolve `scripts/metaloop_kernel.py` relative to this `SKILL.md`.
-
-1. Inspect current MetaLoop state before proposing action:
+Useful commands:
 
 ```bash
 python3 "$KERNEL" --workspace . status
 python3 "$KERNEL" --workspace . threads status
 python3 "$KERNEL" --workspace . event list --limit 5
-```
-
-2. Before execution, design the verification protocol. Classify the task domain, decide whether the bundled generic extension is enough, and if not, propose a task-specific ExtensionSpec plus VerificationSpec. Mark every validator with `mode` (`executable`, `manual`, or `unsupported`) and `severity` (`blocking` or `advisory`). Do not execute until the Mission Capsule, ExtensionSpec, and VerificationSpec are locked.
-
-During design, Codex must proactively decide the protocol shape:
-
-- `single_node`: one Mission Capsule and one Adaptive Loop are enough
-- `multi_thread`: persistent Codex threads are useful but share one capsule truth
-- `routable_work_units`: separate workspaces/contracts should exchange job envelopes through outbox/relay
-
-Do not ask the user to choose these labels. Choose the smallest shape that can preserve correctness, context isolation, verification integrity, and recovery.
-
-A capsule cannot be locked from intent alone; include rationale, non-goals, acceptance, and either executable validators or explicit `--allow-manual-only`:
-
-```bash
-python3 "$KERNEL" --workspace . design \
-  --intent "<clarified intent>" \
-  --rationale "<key design rationale>" \
-  --constraint "<constraint>" \
-  --non-goal "<non-goal>" \
-  --acceptance "<acceptance criterion>" \
-  --file-exists "<expected/file/path>"
-```
-
-For metric-driven work, lock a structured VerificationSpec during design instead of leaving rules in chat:
-
-```bash
-python3 "$KERNEL" --workspace . design \
-  --intent "<clarified intent>" \
-  --rationale "<why this gate defines completion>" \
-  --non-goal "<what must not be claimed>" \
-  --json-metric-gate '{"path":"summary.json","metric":"held_out.peak1_delta","operator":">=","threshold":0}'
-```
-
-Do not use `file_exists` alone for metric, research, promotion, benchmark, or quality-breakthrough tasks. A file may prove that a run produced an artifact; it does not prove that the goal was achieved. Add metric gates, baseline comparisons, resource gates, forbidden claims, attempt requirements, or manual blocking review as appropriate.
-
-The portable kernel supports the bundled `generic` extension with `file_exists`, `command`, `forbidden_path`, `json_metric_gate`, `json_field_exists`, `file_contains`, `artifact_hash`, `forbidden_claim`, `manual_acceptance`, and `resource_gate`. Full `--extension-spec <path>` and `--verification-spec <path>` JSON objects can also be locked into the capsule.
-
-Before designing a custom spec, inspect available extension examples under `extensions/`. The bundled generic example is `extensions/generic/examples/basic.json`.
-
-3. If a mission exists and is ready, execute through the bundled run wrapper when a command-based execution path is available. This writes `.metaloop/execution_report.json` so verification is judging an actual run, not a chat claim:
-
-```bash
-python3 "$KERNEL" --workspace . run \
-  --command "<command that performs the work>" \
-  --evidence "<evidence note>"
-```
-
-When Codex itself performs the implementation, keep work aligned to `.metaloop/mission_capsule.json`, then produce an ExecutionReport through the bundled kernel's command wrapper when possible. If the implementation cannot be represented as a single command wrapper, write equivalent evidence into `.metaloop/` and still run verification against the locked spec.
-
-4. Judge completion through verification, not worker self-report:
-
-```bash
+python3 "$KERNEL" --workspace . design ...
+python3 "$KERNEL" --workspace . run --command "<command>" --evidence "<note>"
 python3 "$KERNEL" --workspace . verify
+python3 "$KERNEL" --workspace . adaptive record ...
+python3 "$KERNEL" --workspace . event append ...
+python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
+python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
 ```
 
-5. If interrupted or failed but the task direction is still valid, mark or resume deliberately:
+Intent alone is not enough to lock a capsule. Include rationale, non-goals,
+acceptance, and executable validators, or make manual-only review explicit.
 
-```bash
-python3 "$KERNEL" --workspace . mark --status running --reason "Continuing implementation around locked capsule."
-```
+For metric, benchmark, research, promotion, or quality-breakthrough tasks,
+`file_exists` is not enough. Add metric gates, baseline comparisons, resource
+gates, forbidden claims, attempt evidence, or blocking manual review.
 
-6. If the user is dissatisfied, classify before acting:
+## Validation Discipline
 
-```bash
-python3 "$KERNEL" --workspace . mark --status repair_required --reason "Implementation defect; contract still valid."
-python3 "$KERNEL" --workspace . mark --status redesign_required --reason "Contract boundary or acceptance must change."
-```
+Verification is part of the prompt, not an afterthought.
 
-Do not assume a repository-level MetaLoop command exists. The bundled kernel is the skill's portable backend.
+- Run relevant tests, commands, builds, type checks, metric checks, or smoke
+  tests after changes when available.
+- If validation cannot run, say why and record the blocker.
+- Do not accept worker self-report as final evidence.
+- Do not weaken locked acceptance after execution.
+- If a hard metric gate fails, say the target failed.
+- If evidence is missing or ambiguous, do not claim completion.
 
-For repeated attempts, do not merely rerun commands. Apply the Adaptive Goal Loop before the next attempt: summarize the observation, evaluate it against locked criteria, diagnose the likely cause, choose `continue` / `repair` / `redesign` / `pivot` / `stop` / `escalate`, and make the next plan explicitly depend on the evidence from the previous attempt.
+## Stopping Conditions
 
-After a failed or partial VerificationResult, do not run another attempt until the loop has recorded observable feedback and a control decision: observation, evaluation, diagnosis, decision, and next_plan. In repositories with `metaloop_core`, `ObservationReport` and `DiagnosisReport` may be produced from ExecutionReport plus VerificationResult; in skill-only mode, record the same content through `adaptive record` or `event append`.
+After each attempt, classify the state before acting:
 
-For routable work units, the normal lifecycle is:
+- `complete`: locked verification passed and human acceptance is satisfied or
+  pending.
+- `continue`: the goal is valid and another high-signal attempt is justified.
+- `repair`: the contract is right; implementation is defective.
+- `redesign`: scope, acceptance, authority, or VerificationSpec is wrong or
+  incomplete.
+- `pivot`: the goal remains, but the strategy direction should change.
+- `stop`: continuing under current constraints is not useful.
+- `escalate`: resource, permission, cost, policy, or human authority blocks
+  progress.
 
-```text
-node design -> node run -> node verify -> adaptive diagnosis when needed -> tick -> outbox -> relay -> downstream node design/run
-```
-
-The agent should create or revise target-project artifacts such as `global_blackboard.json`, `dispatch_map.json`, `job_envelope.json`, envelope templates, and node-specific Mission Capsules only inside the user's target project. Do not add project-specific tasks, datasets, metrics, or business rules to the MetaLoop skill or MetaLoop core.
-
-## Dissatisfaction Classification
-
-- `repair`: target and acceptance are still correct; implementation is defective.
-- `redesign`: scope, acceptance, authority, or task definition needs to change.
-- `resume`: task is incomplete but direction remains correct.
-- `complete`: verification passed and human acceptance is satisfied or pending.
-
-Do not silently change a locked MissionSpec, Mission Capsule, or GoalContract. Route contract changes through redesign/revision.
+Failed or partial verification must feed observation, evaluation, diagnosis,
+decision, and next plan before another attempt.
 
 ## Hard Boundaries
 
 - Mission Capsule is task truth; chat history is not operational state.
-- Persistent thread context is not operational state unless summarized into `.metaloop/` artifacts.
-- Multi-thread agents must coordinate through `.metaloop/` artifacts, not private memory.
-- Repeated attempts must update shared understanding through observation, evaluation, diagnosis, decision, and next plan.
-- Important long-task observations, decisions, blockers, and handoffs should be recorded in `.metaloop/event_log.jsonl`.
-- Codex execution reports are candidate evidence, not final truth.
-- Intent alone is not enough to lock a Mission Capsule.
-- ExtensionSpec and VerificationSpec are locked with the Mission Capsule and carry hashes.
+- Persistent thread context is useful but not authoritative unless summarized
+  into `.metaloop/` artifacts.
+- ExtensionSpec and VerificationSpec are locked with the Mission Capsule and
+  carry hashes.
 - Verification requires a valid ExecutionReport.
-- Manual or unsupported blocking validators cannot become hard verified completion.
-- Replacing a locked capsule requires a revision reason and archives the previous capsule.
-- VerificationResult and user acceptance determine completion.
-- Hard validators failing means not complete.
-- Failed or partial verification must feed observation and diagnosis before the next attempt.
-- If a core metric gate fails, say the target failed. Do not present `completed_with_limitations` or artifact production as goal success.
-- Skill instructions do not provide non-bypassable guarantees.
-- Do not build a parallel state system outside `.metaloop/` artifacts.
-- Do not make the user manually specify MetaLoop internals when the skill can infer them from the project and task.
-- Do not store project-specific task logic, datasets, metrics, or domain facts in this skill or in MetaLoop core.
+- Manual or unsupported blocking validators cannot become hard verified
+  completion.
+- Replacing a locked capsule requires a revision reason and archives the
+  previous capsule.
+- Do not build a parallel state system outside `.metaloop/`.
+- Do not store project-specific tasks, datasets, metrics, or business rules in
+  this skill or in MetaLoop core.
 
 ## References
 
-- For the lightweight product direction and skill boundary, read `references/lightweight_protocol.md`.
-- For the prompt-first / code-backed discipline, read `references/prompt_first_code_backed.md`.
-- For current repository implementation details, inspect `README.md`, `STATE.md`, `HANDOFF.md`, and `docs/metaloop_lightweight_protocol_reframing.md` when present.
+- `references/lightweight_protocol.md`: protocol details and skill boundary.
+- `references/prompt_first_code_backed.md`: prompt-first / code-backed product
+  discipline.
+- Project docs, when present: `README.md`, `STATE.md`, `HANDOFF.md`,
+  `docs/metaloop_design_autonomy.md`, and
+  `docs/metaloop_routable_work_units.md`.

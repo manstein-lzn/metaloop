@@ -24,6 +24,30 @@ MetaLoop should avoid leading with:
 - prompt-only discipline
 - repeated one-shot `codex exec` calls as the default intelligence layer for complex projects
 - code mechanisms that do not correspond to repeated real failures
+- process-heavy prompts that make the model follow a long script instead of optimizing for the desired outcome
+
+## Prompt Surface
+
+The skill prompt should be outcome-first:
+
+- define the target outcome
+- define success and failure evidence
+- define constraints and non-goals
+- define stopping conditions
+- let Codex choose the smallest adequate protocol shape
+
+Keep mechanism details in references and artifacts. The main skill should not
+read like a long operating manual. Use hard words such as `must` or `never`
+only for true invariants: locked contracts, verification authority, forbidden
+claims, safety/resource blockers, and artifact truth.
+
+For tool-heavy tasks, give a short preamble before inspection or execution, then
+act. For long tasks, give concise progress updates and record durable
+observations in `.metaloop/event_log.jsonl` instead of relying on chat memory.
+
+Use bounded inspection: read enough project context to design the contract and
+verification gates, but stop when extra searching no longer changes scope,
+acceptance, risk, or evidence.
 
 ## Skill Boundary
 

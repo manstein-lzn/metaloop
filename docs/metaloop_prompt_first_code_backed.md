@@ -32,6 +32,11 @@ Use prompts, skill instructions, playbooks, and examples for work that requires 
 - proposing the next high-signal plan
 - explaining uncertainty and residual risk to the user
 
+Keep those prompts outcome-first. Prefer describing the desired result,
+evidence, constraints, and stopping conditions over prescribing a long fixed
+procedure. Long procedural prompts should be split into references, examples,
+or durable artifacts when the main skill surface becomes hard to scan.
+
 These are intelligence tasks. Hardcoding them too early makes MetaLoop rigid and hard to maintain.
 
 ## Code Responsibilities
@@ -91,6 +96,22 @@ Do not add new Python modules just because a prompt says something important. Ad
 - multiple agents need a shared handoff artifact
 
 Otherwise, improve the prompt protocol or add an example.
+
+## Outcome-First Skill Surface
+
+The main `$metaloop` skill should optimize for a strong Codex interaction:
+
+- short preamble before tool-heavy work
+- bounded project inspection
+- clear success and failure evidence
+- explicit stopping conditions
+- validation after changes
+- repair/redesign/pivot/stop decisions after failed verification
+- only blocking questions to the user
+
+Details such as Mission Capsule fields, job envelopes, relay mechanics, and
+validator schemas belong in references or generated artifacts unless they are
+needed in the first response.
 
 ## Relationship To Current Core
 

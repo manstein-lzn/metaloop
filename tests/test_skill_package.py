@@ -21,30 +21,30 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
 
     assert "name: metaloop" in skill
     assert "scripts/metaloop_kernel.py" in skill
-    assert "do not assume a separate `metaloop` package is installed" in skill
+    assert "do not assume a separate `metaloop` command is installed" in skill
     assert "MetaLoop is skill-first, not prompt-only." in skill
     assert "Prompt handles intelligence. Code handles truth." in skill
     assert "Skill handles entry and alignment." in skill
-    assert "bundled kernel for state and checks" in skill
+    assert "Use `scripts/metaloop_kernel.py` for" in skill
     assert "Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints" in skill
-    assert "Do not silently change a locked MissionSpec" in skill
-    assert "run" in skill
-    assert "ExtensionSpec" in skill
-    assert "mode" in skill
-    assert "severity" in skill
-    assert "The user should not have to know MetaLoop's internal protocol." in skill
-    assert "Codex owns the MetaLoop workflow." in skill
-    assert "Do not require the user to prompt for Mission Capsules" in skill
-    assert "Design Autonomy Protocol" in skill
+    assert "Do not weaken locked acceptance after execution" in skill
+    assert "Replacing a locked capsule requires a revision reason" in skill
+    assert "outcome-first" in skill
+    assert "stopping conditions" in skill
+    assert "bounded inspection" in skill
+    assert "Run relevant tests" in skill
+    assert "If validation cannot run, say why" in skill
+    assert "The user should be able to say only" in skill
+    assert "Do not require the user to ask for Mission Capsules" in skill
+    assert "VerificationSpecs" in skill
     assert "single_node" in skill
     assert "multi_thread" in skill
     assert "routable_work_units" in skill
-    assert "Ask only concrete blocking questions" in skill
+    assert "ask only questions that change the target" in skill
     assert "global_blackboard.json" in skill
     assert "dispatch_map.json" in skill
     assert "job_envelope.json" in skill
-    assert "tick -> outbox -> relay" in skill
-    assert "extensions/generic/examples/basic.json" in skill
+    assert "Do not use routable work units just because a task is large" in skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
     assert "Infer the task shape" in openai_yaml
@@ -72,6 +72,10 @@ def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     assert "Adaptive Goal Loop" in reference
     assert "Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan" in reference
     assert "Prompt-first for intelligence and code-backed for truth" in reference
+    assert "Prompt Surface" in reference
+    assert "outcome-first" in reference
+    assert "bounded inspection" in reference
+    assert "process-heavy prompts" in reference
 
 
 def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
@@ -91,6 +95,7 @@ def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
     assert "Design Autonomy" in design
     assert "single_node" in design
     assert "routable_work_units" in design
+    assert "Outcome-First Skill Surface" in (ROOT / "docs" / "metaloop_prompt_first_code_backed.md").read_text(encoding="utf-8")
 
 
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
