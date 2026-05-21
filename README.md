@@ -54,7 +54,7 @@ docs/                 当前产品原则和团队使用文档
 - VerificationResult：由 locked validators 独立验收，不信 worker 自述。
 - ReviewResult：当验证进入 `review_required` 时，由独立 Codex reviewer
   审查证据并写入 `.metaloop/review_result.json`；用户专属授权仍然保留为
-  `human_acceptance_required`。
+  显式 opt-in 的 `human_acceptance_required`。
 - Adaptive Goal Loop：当目标未达成时，记录观察、评估、诊断、下一轮计划和 repair/redesign 决策。
 - Thread registry：多个 Codex thread 参与时，用 `.metaloop/threads.json` 记录职责和 handoff 边界。
 - Event log：用 `.metaloop/event_log.jsonl` 记录长任务中的关键观察、阻塞、决策和验证笔记。

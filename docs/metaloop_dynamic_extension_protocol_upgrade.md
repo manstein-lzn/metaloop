@@ -128,7 +128,7 @@ executable + blocking + failed -> failed
 manual + blocking + delegatable -> review_required
 manual + blocking + delegatable + approved review_result -> completed_verified
 manual + blocking + delegatable + rejected/needs_changes review_result -> failed
-manual + blocking + user authority -> human_acceptance_required
+manual + blocking + explicitly reserved user authority -> human_acceptance_required
 unsupported + blocking -> unsupported_verification_spec
 advisory unresolved/failed -> warning, never hard proof
 ```
@@ -170,6 +170,9 @@ Task-specific extension specs must include risk coverage before lock:
 - review results must match the current capsule id, capsule revision, and
   VerificationSpec hash.
 - reviewer role must be independent from the worker role.
+- MetaLoop protocol authority is delegated to Codex agents by default; use
+  `requires_user_confirmation: true`, `authority: "user"`, or
+  `delegable: false` only when the user explicitly reserves authority.
 
 ## Revision Discipline
 
@@ -208,10 +211,11 @@ The kernel may only execute bundled generic validators for now, but the protocol
 - declared delegatable manual blocking validator returns `review_required`.
 - approved independent review result can resolve delegatable manual blockers.
 - stale or worker-authored review result does not resolve `review_required`.
-- declared user-authority manual blocking validator returns `human_acceptance_required`.
+- declared explicit user-authority manual blocking validator returns `human_acceptance_required`.
 - advisory failed/unsupported validators appear in warnings.
 - `json_field_exists`, `file_contains`, and `artifact_hash` work.
-- `resource_gate requires_user_confirmation` blocks hard completion.
+- `resource_gate` defaults to delegatable review; explicit
+  `requires_user_confirmation: true` blocks hard completion.
 - `design --force` requires `--revision-reason` and archives previous capsule.
 - local skill remains self-contained and passes skill validation.
 - full test suite passes.

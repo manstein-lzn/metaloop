@@ -1537,7 +1537,7 @@ def _unsupported_result(validator: dict[str, Any], message: str) -> dict[str, An
 
 
 def _resource_gate_result(gate: dict[str, Any]) -> dict[str, Any]:
-    requires_user_confirmation = bool(gate.get("requires_user_confirmation", True))
+    requires_user_confirmation = bool(gate.get("requires_user_confirmation", False))
     return {
         "type": "resource_gate",
         "mode": _validator_mode(gate, default="manual"),

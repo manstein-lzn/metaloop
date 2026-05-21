@@ -13,12 +13,12 @@
     {"type": "json_field_exists", "mode": "executable", "description": "Require a dotted JSON field to exist."},
     {"type": "json_metric_gate", "mode": "executable", "description": "Compare a dotted JSON metric against a threshold."},
     {"type": "manual_acceptance", "mode": "manual", "description": "Require final reviewer or user acceptance."},
-    {"type": "resource_gate", "mode": "manual", "description": "Require confirmation before expensive or sensitive resources."}
+    {"type": "resource_gate", "mode": "manual", "description": "Record delegated resource review, or require user confirmation when explicitly reserved."}
   ],
   "risk_checks": [
     "Does the VerificationSpec distinguish executable checks from manual or unsupported checks?",
     "Does the spec prevent claiming completion from missing or partial evidence?",
-    "Are expensive or sensitive resource actions gated by explicit confirmation?"
+    "Are expensive or sensitive resource actions covered by delegated review or explicitly reserved user confirmation?"
   ],
   "review_questions": [
     "Which task failure modes are not covered by executable validators?",

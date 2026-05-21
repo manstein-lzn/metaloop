@@ -101,7 +101,8 @@ The generic decision vocabulary is:
 - `redesign`: goal, acceptance, scope, or VerificationSpec is wrong or incomplete.
 - `pivot`: the current strategy direction is likely wrong; keep the goal but change approach.
 - `stop`: goal should not continue under current constraints.
-- `escalate`: blocked by resource, permission, policy, or human authority.
+- `escalate`: blocked by host permission, external policy, unavailable
+  resource, or explicitly reserved user authority.
 
 This vocabulary is deliberately domain-neutral.
 

@@ -153,7 +153,8 @@ Use this decision vocabulary for repeated attempts:
 - `redesign`: the goal, acceptance, scope, or VerificationSpec is wrong or incomplete.
 - `pivot`: keep the goal but change the strategy direction.
 - `stop`: do not continue under current constraints.
-- `escalate`: blocked by resource, permission, policy, or human authority.
+- `escalate`: blocked by host permission, external policy, unavailable
+  resource, or explicitly reserved user authority.
 
 Domain extensions should define evidence types, metrics, thresholds, extractors, and risk rules. They should not define a separate domain-only loop.
 
@@ -242,7 +243,8 @@ Agents may design an ExtensionSpec and VerificationSpec during the design phase,
 Each validator must classify its verification mode and severity:
 
 - `mode=executable`: kernel can run the check.
-- `mode=manual`: user/reviewer judgment is required.
+- `mode=manual`: delegated reviewer judgment is required by default; user
+  judgment is required only when explicitly reserved.
 - `mode=unsupported`: the task needs the check, but this kernel has no executor yet.
 - `severity=blocking`: unresolved means not complete.
 - `severity=advisory`: record as warning, not hard proof.

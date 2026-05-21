@@ -21,6 +21,7 @@ def _extension_spec() -> dict:
             {"type": "json_field_exists", "mode": "executable", "description": "field exists"},
             {"type": "artifact_hash", "mode": "executable", "description": "artifact hash"},
             {"type": "manual_acceptance", "mode": "manual", "description": "manual"},
+            {"type": "resource_gate", "mode": "manual", "description": "resource"},
             {"type": "future_gate", "mode": "unsupported", "description": "future"},
         ],
         "risk_checks": [],
@@ -31,7 +32,7 @@ def _extension_spec() -> dict:
     return spec
 
 
-def _verification_spec(extension: dict, validators: list[dict]) -> dict:
+def _verification_spec(extension: dict, validators: list[dict], resource_gates: list[dict] | None = None) -> dict:
     spec = {
         "schema": "metaloop.verification_spec",
         "version": "1.0",
@@ -41,15 +42,15 @@ def _verification_spec(extension: dict, validators: list[dict]) -> dict:
         "extension_hash": extension["extension_hash"],
         "validators": validators,
         "evidence_requirements": [],
-        "resource_gates": [],
+        "resource_gates": resource_gates or [],
     }
     spec["spec_hash"] = hash_object(spec, "spec_hash")
     return spec
 
 
-def _write_capsule(tmp_path: Path, validators: list[dict]) -> dict:
+def _write_capsule(tmp_path: Path, validators: list[dict], resource_gates: list[dict] | None = None) -> dict:
     extension = _extension_spec()
-    verification = _verification_spec(extension, validators)
+    verification = _verification_spec(extension, validators, resource_gates)
     capsule = {
         "schema": "metaloop.lightweight_capsule",
         "version": "1.0",
@@ -140,6 +141,21 @@ def test_verify_workspace_routes_manual_and_unsupported_blockers(tmp_path) -> No
     )
     unsupported = verify_workspace(tmp_path / "other")
     assert unsupported["status"] == "unsupported_verification_spec"
+
+
+def test_verify_workspace_delegates_resource_gates_by_default(tmp_path) -> None:
+    _write_capsule(
+        tmp_path,
+        [{"type": "file_exists", "mode": "executable", "severity": "blocking", "path": "result.txt"}],
+        [{"type": "resource_gate", "mode": "manual", "severity": "blocking", "resource": "gpu"}],
+    )
+    (tmp_path / "result.txt").write_text("ok\n", encoding="utf-8")
+
+    result = verify_workspace(tmp_path)
+
+    assert result["status"] == "review_required"
+    assert result["manual_validator_results"][0]["requires_user_confirmation"] is False
+    assert result["manual_validator_results"][0]["delegable"] is True
 
 
 def test_verify_workspace_applies_independent_review_result(tmp_path) -> None:

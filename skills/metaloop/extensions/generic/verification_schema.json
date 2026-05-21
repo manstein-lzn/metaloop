@@ -12,6 +12,6 @@
     "artifact_hash": ["type", "mode", "severity", "path", "sha256"],
     "forbidden_claim": ["type", "mode", "severity", "claim", "description"],
     "manual_acceptance": ["type", "mode", "severity", "description"],
-    "resource_gate": ["type", "mode", "severity", "resource", "requires_user_confirmation", "reason"]
+    "resource_gate": ["type", "mode", "severity", "resource", "requires_user_confirmation", "authority", "delegable", "reason"]
   }
 }

@@ -170,10 +170,12 @@ Blocking review has two statuses:
   delegated to an independent Codex reviewer. The worker may not self-approve;
   a reviewer must inspect locked evidence and record the outcome with
   `review record`, then verification must be rerun.
-- `human_acceptance_required`: user-only authority is required. Do not delegate
-  cost, resource, destructive action, external publication, official
-  promotion, credential, legal, or explicitly non-delegable decisions unless
-  the user has explicitly delegated that authority.
+- `human_acceptance_required`: user-only authority is required only when the
+  user explicitly reserves that authority in the locked contract. In goal mode,
+  MetaLoop protocol authority is delegated to Codex agents by default; do not
+  ask the user for ordinary MetaLoop protocol approvals, resource reviews, or
+  final claim reviews unless the task exceeds the user's Codex/tool sandbox
+  permissions or the user explicitly opts back into approval.
 
 For observability, prefer read-only summaries from `.metaloop/` artifacts. For
 control, write explicit intent files under `.metaloop/control/`; do not make a
@@ -205,8 +207,9 @@ If verification returns `review_required`, do not ask the user by default.
 Register or use an independent Codex reviewer thread when available, have it
 inspect the Mission Capsule, ExecutionReport, VerificationResult, metrics, and
 claimed conclusions, then write `review_result.json` through `review record`.
-Only ask the user when the gate is `human_acceptance_required` or when reviewer
-independence is impossible.
+Only ask the user when reviewer independence is impossible, the host tool
+permission is unavailable to Codex, or the locked contract explicitly reserves
+user authority.
 
 `.metaloop/` is local operational state and should normally be gitignored in
 target projects. Keep summaries compact, archive only when useful, and do not
@@ -237,8 +240,8 @@ After each attempt, classify the state before acting:
   incomplete.
 - `pivot`: the goal remains, but the strategy direction should change.
 - `stop`: continuing under current constraints is not useful.
-- `escalate`: resource, permission, cost, policy, or human authority blocks
-  progress.
+- `escalate`: host permission, external policy, unavailable resource, or
+  explicitly reserved user authority blocks progress.
 
 Failed or partial verification must feed observation, evaluation, diagnosis,
 decision, and next plan before another attempt.
