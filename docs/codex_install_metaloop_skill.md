@@ -3,10 +3,10 @@
 Copy the following prompt into Codex on the target machine.
 
 ````text
-Install the MetaLoop Codex Skill from GitHub and validate it.
+Install the MetaLoop Codex Skill from GitLab and validate it.
 
 Repository:
-git@github.com:manstein-lzn/metaloop.git
+git@gitlab.cwise.dev:linzhengnan/metaloop.git
 
 Requirements:
 1. Do not install the full Python package unless validation requires it.
@@ -33,7 +33,7 @@ set -euo pipefail
 WORKDIR="$(mktemp -d /tmp/metaloop-skill-install.XXXXXX)"
 DEST="${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
 
-git clone git@github.com:manstein-lzn/metaloop.git "$WORKDIR/metaloop"
+git clone git@gitlab.cwise.dev:linzhengnan/metaloop.git "$WORKDIR/metaloop"
 mkdir -p "$(dirname "$DEST")"
 rm -rf "$DEST"
 cp -R "$WORKDIR/metaloop/skills/metaloop" "$DEST"

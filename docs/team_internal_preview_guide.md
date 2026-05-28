@@ -25,7 +25,7 @@ Primary entry:
 Secondary manual fallback:
 
 ```bash
-git clone git@github.com:manstein-lzn/metaloop.git /tmp/metaloop-skill-source
+git clone git@gitlab.cwise.dev:linzhengnan/metaloop.git /tmp/metaloop-skill-source
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 rm -rf "${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
 cp -R /tmp/metaloop-skill-source/skills/metaloop "${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
