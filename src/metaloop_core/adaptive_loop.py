@@ -219,24 +219,15 @@ def record_iteration(workspace: str | Path, **kwargs: Any) -> dict[str, Any]:
 
 
 def decide_next(*, evaluation_status: str, diagnosis: str = "", next_plan: str = "") -> str:
-    """Return a conservative generic next decision for a loop iteration."""
+    """Map mechanical status only; semantic next actions must be explicit."""
 
     status = evaluation_status.strip()
-    text = f"{diagnosis} {next_plan}".lower()
     if status == "satisfied":
         return "complete"
     if status == "invalid_goal":
         return "redesign"
     if status == "blocked":
-        return "escalate" if any(term in text for term in ["permission", "resource", "approval", "gpu", "blocked"]) else "stop"
-    if any(term in text for term in ["pivot", "wrong direction", "目标不对", "方向不对"]):
-        return "pivot"
-    if any(term in text for term in ["contract", "acceptance", "验收", "scope", "目标"]):
-        return "redesign"
-    if any(term in text for term in ["bug", "regression", "implementation", "修复", "错误"]):
-        return "repair"
-    if status in {"not_satisfied", "partial", "unknown"}:
-        return "continue"
+        return "escalate"
     return "continue"
 
 

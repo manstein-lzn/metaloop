@@ -13,6 +13,7 @@ from typing import Any
 
 
 CAPSULE_SCHEMA = "metaloop.lightweight_capsule"
+ENGINEERING_GOVERNANCE_SCHEMA = "metaloop.engineering_governance"
 ADAPTIVE_LOOP_SCHEMA = "metaloop.adaptive_goal_loop"
 ADAPTIVE_ITERATION_SCHEMA = "metaloop.adaptive_goal_iteration"
 EXECUTION_REPORT_SCHEMA = "metaloop.lightweight_execution_report"
@@ -35,6 +36,7 @@ ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
 CONTEXT_SUMMARY_SCHEMA = "metaloop.context_summary"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
+ENGINEERING_CHANGE_TYPES = {"repair", "extension", "redesign"}
 ADAPTIVE_LOOP_STATUSES = {"active", "completed", "stopped", "blocked"}
 ADAPTIVE_DECISIONS = {"complete", "continue", "repair", "redesign", "pivot", "stop", "escalate"}
 EVALUATION_STATUSES = {"satisfied", "not_satisfied", "partial", "unknown", "blocked", "invalid_goal"}
@@ -185,6 +187,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     design_parser.add_argument("--revision-reason", help="Reason for replacing an existing locked capsule.")
     design_parser.add_argument("--force", action="store_true", help="Create a new revision when a capsule exists.")
+    design_parser.add_argument("--change-type", choices=sorted(ENGINEERING_CHANGE_TYPES), help="Explicit engineering change classification.")
+    design_parser.add_argument("--governing-document", help="Workspace-relative normative document to lock by hash.")
+    design_parser.add_argument("--module-contract", action="append", default=[], help="Workspace-relative module contract to lock by hash. Repeatable.")
+    design_parser.add_argument("--allowed-path", action="append", default=[], help="Workspace-relative implementation scope. Repeatable.")
+    design_parser.add_argument("--migration-plan", help="Workspace-relative migration plan; required only for redesign.")
 
     run_parser = subparsers.add_parser("run", help="Run command(s) around the locked Mission Capsule and write an ExecutionReport.")
     run_parser.add_argument("--command", action="append", required=True, dest="run_commands", help="Command to run from the workspace. Repeatable.")
@@ -1108,10 +1115,16 @@ def _design(workspace: Path, args: argparse.Namespace) -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
+    governance, governance_errors = _build_engineering_governance(workspace, args)
+    if governance_errors:
+        print("design_invalid:", file=sys.stderr)
+        for error in governance_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
     root.mkdir(parents=True, exist_ok=True)
     if previous_capsule is not None:
         _archive_capsule(workspace, previous_capsule)
-    capsule = _build_capsule(workspace, args, extension_spec, verification_spec, review, previous_capsule)
+    capsule = _build_capsule(workspace, args, extension_spec, verification_spec, review, previous_capsule, governance)
     capsule_path.write_text(json.dumps(capsule, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"capsule: {capsule_path}")
     print("status: designed")
@@ -1328,6 +1341,7 @@ def _build_capsule(
     verification_spec: dict[str, Any],
     review: dict[str, Any],
     previous_capsule: dict[str, Any] | None,
+    engineering_governance: dict[str, Any] | None,
 ) -> dict[str, Any]:
     acceptance = []
     for text in args.acceptance:
@@ -1365,6 +1379,7 @@ def _build_capsule(
         "verification_spec": verification_spec,
         "verification_plan": {"hard_validators": _legacy_hard_validators(verification_spec)},
         "verification_review": review,
+        "engineering_governance": engineering_governance,
         "current_status": "designed",
         "status_history": [{"status": "designed", "reason": "Capsule locked by lightweight kernel.", "at": _now()}],
     }
@@ -2064,6 +2079,8 @@ def _load_capsule(workspace: Path) -> dict[str, Any] | None:
 def _load_valid_capsule(workspace: Path) -> tuple[dict[str, Any] | None, list[str]]:
     payload = _read_json(_metaloop_dir(workspace) / "mission_capsule.json")
     errors = _validate_capsule(payload)
+    if not errors and isinstance(payload, dict):
+        errors.extend(_verify_engineering_governance(workspace, payload.get("engineering_governance")))
     if errors:
         return None, errors
     return payload, []
@@ -2227,6 +2244,126 @@ def _build_verification_review(args: argparse.Namespace, extension_spec: dict[st
     }
 
 
+def _build_engineering_governance(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any] | None, list[str]]:
+    requested = any([args.change_type, args.governing_document, args.module_contract, args.allowed_path, args.migration_plan])
+    if not requested:
+        return None, []
+    errors: list[str] = []
+
+    def lock(ref: str | None, label: str) -> dict[str, str] | None:
+        if not ref:
+            errors.append(f"{label} is required for engineering governance")
+            return None
+        try:
+            path, safe_ref = _resolve_governance_ref(workspace, ref)
+        except ValueError as exc:
+            errors.append(str(exc))
+            return None
+        if not path.is_file():
+            errors.append(f"governance ref is not a file: {safe_ref}")
+            return None
+        return {"ref": safe_ref, "sha256": _sha256_file(path)}
+
+    payload = {
+        "schema": ENGINEERING_GOVERNANCE_SCHEMA,
+        "version": "1.0",
+        "change_type": args.change_type,
+        "governing_document": lock(args.governing_document, "--governing-document"),
+        "module_contracts": [item for ref in args.module_contract if (item := lock(ref, "--module-contract"))],
+        "allowed_paths": list(args.allowed_path),
+        "migration_plan": lock(args.migration_plan, "--migration-plan") if args.migration_plan else None,
+    }
+    errors.extend(_validate_engineering_governance(payload))
+    return payload, errors
+
+
+def _validate_engineering_governance(payload: Any) -> list[str]:
+    if payload is None:
+        return []
+    if not isinstance(payload, dict):
+        return ["engineering_governance must be an object"]
+    errors: list[str] = []
+    if payload.get("schema") != ENGINEERING_GOVERNANCE_SCHEMA:
+        errors.append(f"engineering_governance.schema must be {ENGINEERING_GOVERNANCE_SCHEMA}")
+    if payload.get("version") != "1.0":
+        errors.append("engineering_governance.version must be 1.0")
+    if payload.get("change_type") not in ENGINEERING_CHANGE_TYPES:
+        errors.append(f"engineering_governance.change_type must be one of {sorted(ENGINEERING_CHANGE_TYPES)}")
+    errors.extend(_validate_governance_file(payload.get("governing_document"), "engineering_governance.governing_document"))
+    contracts = payload.get("module_contracts")
+    if not isinstance(contracts, list) or not contracts:
+        errors.append("engineering_governance.module_contracts must be a non-empty list")
+    else:
+        for index, item in enumerate(contracts):
+            errors.extend(_validate_governance_file(item, f"engineering_governance.module_contracts[{index}]"))
+    allowed_paths = payload.get("allowed_paths")
+    if not isinstance(allowed_paths, list) or not allowed_paths:
+        errors.append("engineering_governance.allowed_paths must be a non-empty list")
+    elif not all(_is_safe_governance_ref(item) for item in allowed_paths):
+        errors.append("engineering_governance.allowed_paths must contain safe workspace-relative paths")
+    migration = payload.get("migration_plan")
+    if payload.get("change_type") == "redesign":
+        errors.extend(_validate_governance_file(migration, "engineering_governance.migration_plan"))
+    elif migration is not None:
+        errors.append("engineering_governance.migration_plan is only valid for redesign")
+    return errors
+
+
+def _verify_engineering_governance(workspace: Path, payload: Any) -> list[str]:
+    errors = _validate_engineering_governance(payload)
+    if errors or payload is None:
+        return errors
+    locked_files = [payload["governing_document"], *payload["module_contracts"]]
+    if payload.get("migration_plan") is not None:
+        locked_files.append(payload["migration_plan"])
+    for item in locked_files:
+        try:
+            path, safe_ref = _resolve_governance_ref(workspace, item["ref"])
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not path.is_file():
+            errors.append(f"governance ref is missing: {safe_ref}")
+        elif _sha256_file(path) != item["sha256"]:
+            errors.append(f"governance ref hash drifted: {safe_ref}")
+    return errors
+
+
+def _validate_governance_file(value: Any, field: str) -> list[str]:
+    if not isinstance(value, dict):
+        return [f"{field} must be an object"]
+    errors: list[str] = []
+    if not _is_safe_governance_ref(value.get("ref")):
+        errors.append(f"{field}.ref must be a safe workspace-relative path")
+    sha256 = value.get("sha256")
+    if not _is_governance_sha256(sha256):
+        errors.append(f"{field}.sha256 must be a sha256: digest")
+    return errors
+
+
+def _resolve_governance_ref(workspace: Path, ref: str) -> tuple[Path, str]:
+    if not _is_safe_governance_ref(ref):
+        raise ValueError("governance ref must be a safe workspace-relative path")
+    safe_ref = Path(ref).as_posix()
+    path = (workspace / safe_ref).resolve()
+    if not path.is_relative_to(workspace):
+        raise ValueError(f"governance ref escapes workspace: {safe_ref}")
+    return path, safe_ref
+
+
+def _is_safe_governance_ref(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts and path.as_posix() not in {"", "."}
+
+
+def _is_governance_sha256(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 71 or not value.startswith("sha256:"):
+        return False
+    return all(character in "0123456789abcdef" for character in value[7:])
+
+
 def _validate_design_input(
     args: argparse.Namespace,
     extension_spec: dict[str, Any],
@@ -2281,6 +2418,7 @@ def _validate_capsule(payload: Any) -> list[str]:
         errors.append("verification_spec.extension_hash does not match extension_spec.extension_hash")
     if not isinstance(payload.get("verification_review"), dict):
         errors.append("verification_review must be an object")
+    errors.extend(_validate_engineering_governance(payload.get("engineering_governance")))
     return errors
 
 
@@ -3477,19 +3615,12 @@ def _validate_adaptive_iteration(payload: Any) -> list[str]:
 
 
 def _decide_next(evaluation_status: str, *, diagnosis: str = "", next_plan: str = "") -> str:
-    text = f"{diagnosis} {next_plan}".lower()
     if evaluation_status == "satisfied":
         return "complete"
     if evaluation_status == "invalid_goal":
         return "redesign"
     if evaluation_status == "blocked":
-        return "escalate" if any(term in text for term in ["permission", "resource", "approval", "gpu", "blocked"]) else "stop"
-    if any(term in text for term in ["pivot", "wrong direction", "目标不对", "方向不对"]):
-        return "pivot"
-    if any(term in text for term in ["contract", "acceptance", "验收", "scope", "目标"]):
-        return "redesign"
-    if any(term in text for term in ["bug", "regression", "implementation", "修复", "错误"]):
-        return "repair"
+        return "escalate"
     return "continue"
 
 

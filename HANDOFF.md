@@ -105,3 +105,4 @@ python3 -m venv .venv
 - 如果 validator 和被验证工程同仓库，严肃场景应记录 validator 版本/hash，避免 worker 同时改验证规则。
 - `tick`、`relay` 和 `activate` 都是显式 one-shot 文件操作，不是全自动后台调度。自动唤醒 agent thread、watcher、daemon 和消息队列仍不属于当前产品面。
 - Context checkpoint 质量仍需真实长任务验证：太短会无法恢复，太长会重新造成上下文负担。
+- Engineering governance 的 `allowed_paths` 在首个切片中只是锁定的施工范围声明；需要不可绕过限制时，应由 hooks、sandbox 或 wrapper enforcement 实现，不能把当前声明误报成安全边界。

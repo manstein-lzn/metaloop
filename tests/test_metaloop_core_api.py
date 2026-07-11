@@ -16,7 +16,7 @@ def test_metaloop_core_public_api_is_importable() -> None:
     assert new_id("core").startswith("core_")
     assert "T" in utc_now()
     assert WorkspaceState(".").root.is_absolute()
-    assert classify_dissatisfaction("目标不对，需要重设计") == "redesign"
+    assert classify_dissatisfaction("redesign") == "redesign"
     assert observe_node(".")["schema"] == "metaloop.node_summary"
     assert context_summary(".")["schema"] == "metaloop.context_summary"
     assert callable(write_control_request)

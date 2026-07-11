@@ -63,6 +63,7 @@ docs/                 当前产品原则和团队使用文档
 - Observability / control：用只读 summary 观察节点和全局状态，用 `.metaloop/control/*.json` 表达 halt、resource approval、inject fact、revise contract 等显式控制意图。
 - Dashboard：用 `scripts/metaloop_dashboard.py` 在本地浏览器实时查看只读状态；它不写文件、不路由、不启动 agent。
 - Activation：用一次性 scanner 发现 ready node、检查 control/lease，并在调用者显式给出 worker command 时启动 bounded worker；它不是 daemon、agent brain 或隐藏调度器。
+- Engineering governance：对架构、行为、公共契约和跨模块改动，锁定唯一 governing document、module contracts、显式 `repair | extension | redesign` 分类和允许路径；`redesign` 必须绑定迁移计划。MetaLoop 只保存 refs/hashes，不复制项目架构正文。
 
 ## MetaLoop 不管什么
 
@@ -108,3 +109,5 @@ git diff --check
 - [docs/metaloop_observability_control.md](docs/metaloop_observability_control.md)：只读可观测和显式控制文件协议。
 - [docs/metaloop_engineering_cybernetics_principles.md](docs/metaloop_engineering_cybernetics_principles.md)：工程控制论原则。
 - [docs/metaloop_prompt_first_code_backed.md](docs/metaloop_prompt_first_code_backed.md)：Prompt-first / code-backed 产品纪律。
+- [docs/metaloop_engineering_governance_vnext.md](docs/metaloop_engineering_governance_vnext.md)：工程治理 vNext 的规范、边界与验收。
+- [docs/metaloop_engineering_governance_migration_plan.md](docs/metaloop_engineering_governance_migration_plan.md)：从关键词语义推断切换到显式决策的迁移计划。

@@ -746,6 +746,8 @@ def test_bundled_skill_kernel_records_adaptive_goal_loop(tmp_path) -> None:
             "The implementation likely contains a bug in the attempted change.",
             "--next-plan",
             "Repair the implementation bug and rerun the same gate.",
+            "--decision",
+            "repair",
             "--evidence",
             ".metaloop/verification_result.json",
         ],
@@ -1493,6 +1495,52 @@ def test_bundled_skill_kernel_sanitizes_revision_archive_filename(tmp_path) -> N
     assert ".." not in revisions[0].name
     assert "escape_capsule" in revisions[0].name
     assert not (tmp_path / ".metaloop" / "escape").exists()
+
+
+def test_bundled_skill_kernel_engineering_governance_blocks_document_drift(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (docs / "module.md").write_text("# Module\n", encoding="utf-8")
+    design = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "design",
+            "--intent",
+            "Implement one governed slice.",
+            "--rationale",
+            "Keep the project contract stable during execution.",
+            "--non-goal",
+            "Do not infer architecture decisions.",
+            "--file-exists",
+            "result.txt",
+            "--change-type",
+            "extension",
+            "--governing-document",
+            "docs/spec.md",
+            "--module-contract",
+            "docs/module.md",
+            "--allowed-path",
+            "src/example",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert design.returncode == 0, design.stderr
+    (docs / "spec.md").write_text("# Drifted\n", encoding="utf-8")
+    run = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "run", "--command", "printf ok > result.txt"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 1
+    assert "governance ref hash drifted: docs/spec.md" in run.stderr
 
 
 def _test_hash(payload: dict, hash_key: str) -> str:

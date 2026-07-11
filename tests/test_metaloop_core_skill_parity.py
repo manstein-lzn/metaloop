@@ -47,6 +47,46 @@ def test_core_and_skill_kernel_verify_same_success_status(tmp_path) -> None:
     assert skill_result["hard_validator_results"][0]["passed"] is True
 
 
+def test_core_and_skill_kernel_reject_same_governance_drift(tmp_path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (docs / "module.md").write_text("# Module\n", encoding="utf-8")
+    design = _run(
+        [
+            "design",
+            "--intent",
+            "Govern a small change.",
+            "--rationale",
+            "Keep the project contract stable.",
+            "--non-goal",
+            "Do not infer change classification.",
+            "--file-exists",
+            "result.txt",
+            "--change-type",
+            "repair",
+            "--governing-document",
+            "docs/spec.md",
+            "--module-contract",
+            "docs/module.md",
+            "--allowed-path",
+            "src/example",
+        ],
+        tmp_path,
+    )
+    assert design.returncode == 0, design.stderr
+    (docs / "module.md").write_text("# Drift\n", encoding="utf-8")
+
+    from metaloop_core.capsule import load_valid_capsule
+
+    core_capsule, core_errors = load_valid_capsule(tmp_path)
+    skill = _run(["run", "--command", "printf ok > result.txt"], tmp_path)
+    assert core_capsule is None
+    assert core_errors == ["governance ref hash drifted: docs/module.md"]
+    assert skill.returncode == 1
+    assert "governance ref hash drifted: docs/module.md" in skill.stderr
+
+
 def test_core_and_skill_kernel_verify_same_manual_status(tmp_path) -> None:
     design = _run(
         [
@@ -208,6 +248,8 @@ def test_core_and_skill_kernel_share_adaptive_loop_semantics(tmp_path) -> None:
             "The likely issue is an implementation bug in the attempted change.",
             "--next-plan",
             "Repair the implementation bug and rerun the same metric gate.",
+            "--decision",
+            "repair",
             "--evidence",
             ".metaloop/verification_result.json",
             "--json",
@@ -233,6 +275,7 @@ def test_core_written_adaptive_loop_is_readable_by_skill_kernel(tmp_path) -> Non
         evaluation_status="partial",
         diagnosis="The acceptance criteria miss an important user workflow.",
         next_plan="Redesign acceptance criteria before further implementation.",
+        decision="redesign",
     )
 
     skill_status = _run(["adaptive", "status", "--json"], tmp_path)

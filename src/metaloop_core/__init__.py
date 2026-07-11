@@ -8,6 +8,7 @@ from metaloop_core.adaptive_loop import AdaptiveIteration, AdaptiveLoopState, ap
 from metaloop_core.activation import activate_once, activation_lease_path, activation_result_path, plan_activation, write_activation_result
 from metaloop_core.control import control_request_path, load_control_requests, pending_control_requests, write_control_request
 from metaloop_core.context import context_dir, context_file_path, context_summary, ensure_context_files, read_context_file, write_context_file
+from metaloop_core.engineering_governance import build_locked_file, validate_engineering_governance, verify_engineering_governance
 from metaloop_core.event_log import EventLog
 from metaloop_core.execution import build_execution_report, load_execution_report, write_execution_report
 from metaloop_core.feedback import DiagnosisReport, ObservationReport, diagnose_next, observe_workspace, write_diagnosis_report, write_observation_report
@@ -36,6 +37,7 @@ __all__ = [
     "activation_result_path",
     "append_iteration",
     "build_execution_report",
+    "build_locked_file",
     "build_review_result",
     "classify_dissatisfaction",
     "control_request_path",
@@ -66,7 +68,9 @@ __all__ = [
     "route_workspace",
     "tick_workspace",
     "utc_now",
+    "validate_engineering_governance",
     "verify_workspace",
+    "verify_engineering_governance",
     "validate_dispatch_map",
     "validate_global_blackboard",
     "validate_job_envelope",

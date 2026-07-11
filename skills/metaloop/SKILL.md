@@ -96,6 +96,15 @@ Lock the corresponding Mission Capsule and VerificationSpec with the bundled
 kernel before implementation when the task is substantial or verification
 matters.
 
+For architecture, behavior, public-contract, or cross-module engineering work,
+also identify one governing project document and the affected module contracts.
+Classify the change explicitly as `repair`, `extension`, or `redesign`; never
+infer that semantic choice from keywords. Lock their workspace-relative refs and
+hashes with `--governing-document`, repeatable `--module-contract`, and the
+intended `--allowed-path` scope. A `redesign` also requires a locked
+`--migration-plan`. Project docs remain architecture truth; the Mission Capsule
+stores only the locked envelope.
+
 ## Protocol Shape
 
 Use the smallest shape that preserves correctness and recovery:
@@ -142,6 +151,17 @@ python3 "$KERNEL" --workspace . observe --format brief
 python3 "<skill_dir>/scripts/metaloop_dashboard.py" --workspace . --scope root
 python3 "$KERNEL" --workspace . control write --type halt --reason "<why>"
 python3 "$KERNEL" --workspace . activate --root . --worker-command "<explicit command>"
+```
+
+Engineering design example:
+
+```bash
+python3 "$KERNEL" --workspace . design \
+  --change-type extension \
+  --governing-document docs/feature_spec.md \
+  --module-contract docs/module_contract.md \
+  --allowed-path src/feature \
+  ...
 ```
 
 Intent alone is not enough to lock a capsule. Include rationale, non-goals,
@@ -262,6 +282,9 @@ decision, and next plan before another attempt.
   `human_acceptance_required`.
 - Replacing a locked capsule requires a revision reason and archives the
   previous capsule.
+- Governing documents and module contracts must still match their locked hashes
+  before execution and verification; drift requires an explicit capsule
+  revision rather than silent continuation.
 - Do not build a parallel state system outside `.metaloop/`.
 - Do not store project-specific tasks, datasets, metrics, or business rules in
   this skill or in MetaLoop core.

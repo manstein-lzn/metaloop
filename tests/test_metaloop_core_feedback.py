@@ -48,7 +48,7 @@ def test_observe_workspace_summarizes_completed_verified_feedback(tmp_path) -> N
     assert status["diagnosis"]["status"] == "satisfied"
 
 
-def test_diagnose_next_routes_hard_failure_to_repair_or_continue(tmp_path) -> None:
+def test_diagnose_next_requires_explicit_repair_decision(tmp_path) -> None:
     write_verification_result(
         tmp_path,
         {
@@ -63,13 +63,15 @@ def test_diagnose_next_routes_hard_failure_to_repair_or_continue(tmp_path) -> No
 
     observation = observe_workspace(tmp_path)
     diagnosis = diagnose_next(observation)
-    repair = diagnose_next(observation, next_plan="Repair the implementation bug and rerun locked gates.")
+    repair = diagnose_next(observation, next_plan="Repair the implementation bug and rerun locked gates.", decision="repair")
+    uninferred = diagnose_next(observation, next_plan="Repair the implementation bug and rerun locked gates.")
 
     assert observation["status"] == "not_satisfied"
     assert observation["signals"]["hard_failures"] == 1
     assert diagnosis["evaluation_status"] == "not_satisfied"
     assert diagnosis["decision"] == "continue"
     assert repair["decision"] == "repair"
+    assert uninferred["decision"] == "continue"
 
 
 def test_diagnose_next_routes_manual_and_unsupported_blockers(tmp_path) -> None:
@@ -121,7 +123,7 @@ def test_feedback_can_feed_adaptive_loop_iteration(tmp_path) -> None:
         },
     )
     observation = observe_workspace(tmp_path, write=True)
-    diagnosis = diagnose_next(observation, next_plan="Repair the implementation bug and rerun the same metric gate.")
+    diagnosis = diagnose_next(observation, next_plan="Repair the implementation bug and rerun the same metric gate.", decision="repair")
     write_diagnosis_report(tmp_path, diagnosis)
 
     updated = record_iteration(

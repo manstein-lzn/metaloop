@@ -68,6 +68,8 @@ Codex agent conversation
 - `scripts/metaloop_dashboard.py` 提供本地只读 Web dashboard，默认绑定 localhost，只读取 brief summary，不提供 mutation endpoint。
 - `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
 - `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
+- Engineering governance 首个纵向切片已实现：可锁定 governing document、module contracts、允许路径和显式 `repair | extension | redesign` 分类；redesign 必须绑定迁移计划。文档 hash 漂移会在 run/verify 前失败。允许路径目前是声明，不是不可绕过的 filesystem enforcement。
+- `classify_dissatisfaction`、adaptive loop 和 feedback 不再从自由文本关键词制造 repair/redesign/pivot；语义决策由 Codex 显式提供，代码只验证词表或映射低维状态。
 
 ## 当前测试目标
 
