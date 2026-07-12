@@ -1,31 +1,34 @@
-# Codex Install Prompt For MetaLoop Skill
+# Install MetaLoop Codex Skill
 
-Copy the following prompt into Codex on the target machine.
+MetaLoop 以 self-contained Codex Skill 交付。目标机器只需要安装仓库中的
+`skills/metaloop/`，无需安装完整 Python package。
 
-````text
-Install the MetaLoop Codex Skill from GitLab and validate it.
+当前发布仓库：
 
-Repository:
-git@gitlab.cwise.dev:linzhengnan/metaloop.git
+```text
+git@github.com:manstein-lzn/metaloop.git
+```
 
-Requirements:
-1. Do not install the full Python package unless validation requires it.
-2. Install only the self-contained skill package from `skills/metaloop`.
-3. Use `${CODEX_HOME:-$HOME/.codex}/skills/metaloop` as the destination.
-4. If a previous MetaLoop skill exists, replace only that skill directory.
-5. Do not modify the current project repository except for temporary smoke-test
-   files under `/tmp`.
-6. After copying, verify that:
-   - `SKILL.md` exists.
-   - `scripts/metaloop_kernel.py` exists.
-   - `extensions/generic/profile.json` exists.
-   - the kernel can run `status`.
-   - a smoke test can run `design -> run -> verify` and returns
-     `completed_verified`.
-7. If permissions or SSH access fail, stop and print the exact command I should
-   run manually.
+## 交给 Codex 安装
 
-Suggested commands:
+将下面的请求发送给目标机器上的 Codex：
+
+```text
+Install and validate the MetaLoop Codex Skill from:
+git@github.com:manstein-lzn/metaloop.git
+
+Install only `skills/metaloop` into
+`${CODEX_HOME:-$HOME/.codex}/skills/metaloop`.
+Replace only an existing MetaLoop skill directory. Keep project repositories
+unchanged and use `/tmp` for smoke-test files.
+
+Verify SKILL.md, scripts/metaloop_kernel.py, and
+extensions/generic/profile.json exist. Then run status and a temporary
+design -> run -> verify smoke test. Report the installed path, verification
+status, and whether a new Codex session is required.
+```
+
+## 手动安装与验证
 
 ```bash
 set -euo pipefail
@@ -33,7 +36,7 @@ set -euo pipefail
 WORKDIR="$(mktemp -d /tmp/metaloop-skill-install.XXXXXX)"
 DEST="${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
 
-git clone git@gitlab.cwise.dev:linzhengnan/metaloop.git "$WORKDIR/metaloop"
+git clone git@github.com:manstein-lzn/metaloop.git "$WORKDIR/metaloop"
 mkdir -p "$(dirname "$DEST")"
 rm -rf "$DEST"
 cp -R "$WORKDIR/metaloop/skills/metaloop" "$DEST"
@@ -47,28 +50,28 @@ python3 "$DEST/scripts/metaloop_kernel.py" --workspace /tmp status
 SMOKE="$(mktemp -d /tmp/metaloop-skill-smoke.XXXXXX)"
 python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" design \
   --intent "Validate installed MetaLoop skill" \
-  --rationale "A file and JSON field prove the lightweight verification flow." \
-  --non-goal "Do not rely on agent self-report." \
-  --file-exists result.txt \
-  --json-field-exists '{"path":"summary.json","field":"held_out.peak1_delta"}'
+  --rationale "A file proves the lightweight verification flow." \
+  --non-goal "Keep project repositories unchanged." \
+  --file-exists result.txt
 python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" run \
-  --command "printf 'ok' > result.txt && printf '{\"held_out\":{\"peak1_delta\":0}}' > summary.json"
+  --command "printf 'ok\n' > result.txt"
 python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" verify --json
-````
-
-Report:
-- installed path
-- smoke verification status
-- whether I need to restart Codex for `$metaloop` to appear
 ```
 
-## After Installation
-
-Start a new Codex session if the current one does not list `$metaloop`.
-
-Try this in any project:
+成功结果包含：
 
 ```text
-Use $metaloop for this repository. Inspect the project first, then design a
-Mission Capsule with ExtensionSpec and VerificationSpec before executing.
+"status": "completed_verified"
 ```
+
+## 使用
+
+如果当前 session 尚未列出 `$metaloop`，启动一个新的 Codex session。随后在任意项目中
+表达目标即可：
+
+```text
+Use $metaloop. 我想完成 <你的目标>。
+```
+
+Codex 会读取项目、形成设计、选择验证方式并推进任务；用户无需指定 MetaLoop 的内部
+artifact 或协议形态。

@@ -149,6 +149,26 @@ def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
     assert "Outcome-First Skill Surface" in (ROOT / "docs" / "metaloop_prompt_first_code_backed.md").read_text(encoding="utf-8")
 
 
+def test_public_docs_match_progressive_design_product_and_install_source() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    state = (ROOT / "STATE.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    handoff = (ROOT / "HANDOFF.md").read_text(encoding="utf-8")
+    install = (ROOT / "docs" / "codex_install_metaloop_skill.md").read_text(encoding="utf-8")
+
+    assert "MetaLoop 是 Codex 的轻量开发治理协议" in readme
+    assert all(item in readme for item in ["深度设计", "渐进推进", "证据验证", "反馈恢复"])
+    assert "Prompt-first / code-backed" in readme
+    assert "最后更新：2026-07-12" in state
+    assert "Progressive Design" in state
+    assert "最后更新：2026-07-12" in roadmap
+    assert "真实项目验证" in roadmap
+    assert "Progressive Design" in handoff
+    assert "git@github.com:manstein-lzn/metaloop.git" in install
+    assert "Use $metaloop. 我想完成 <你的目标>。" in install
+    assert "git@gitlab.cwise.dev" not in install
+
+
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     doc = (ROOT / "docs" / "metaloop_multi_thread_agent_protocol.md").read_text(encoding="utf-8")

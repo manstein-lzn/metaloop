@@ -1,122 +1,88 @@
 # MetaLoop Roadmap
 
-最后更新：2026-05-12
+最后更新：2026-07-12
 
-MetaLoop 已收敛为 Skill-only 产品。路线图不再围绕自建交互运行时展开，而是围绕 `$metaloop` skill、portable kernel、`metaloop_core`、ExtensionSpec / VerificationSpec 和长任务反馈闭环展开。
+## 方向
 
-## 产品原则
+MetaLoop 的路线由真实任务证据驱动。Skill 持续提升 Codex 的设计与反馈纪律；代码只
+吸收跨场景稳定、反复需要并具有确定性消费者的协议事实。
 
-- Codex agent 保持智能：理解项目、提出方案、写代码、跑实验、反思结果。
-- MetaLoop 保持纪律：设计先行、合同锁定、证据记录、独立验证、repair/redesign 决策。
-- MetaLoop 只做六个关键控制点：Design Gate、State Checkpoint、Verification Gate、Adaptive Loop、Control Point、Observation Surface。
-- Skill 降低用户心智负担：用户给目标，Codex 主动选择 MetaLoop 协议形态和验证流程。
-- Prompt-first / code-backed：能用少量 prompt 稳定驱动智能的地方，不急着写成框架代码；需要真相、状态、验证和审计的地方必须落代码和 artifacts。
-- Core 轻量通用，领域能力通过 extension 生长。
+```text
+完整愿景
+  -> 最小可验证切片
+  -> 真实任务证据
+  -> continue | repair | redesign | stop
+  -> 下一项必要能力
+```
 
-## 已完成
+## 已完成的基础
 
-- 自包含 Codex Skill：`skills/metaloop/`。
-- Portable kernel：`skills/metaloop/scripts/metaloop_kernel.py`。
-- Reusable protocol backend：`src/metaloop_core/`。
-- Core/skill parity tests。
-- Generic extension package。
-- Mission Capsule + ExtensionSpec + VerificationSpec locking。
-- ExecutionReport / VerificationResult flow。
-- Thread registry 和 event log。
-- Adaptive Goal Loop 状态和 ObservationReport / DiagnosisReport。
-- Context checkpoints：`.metaloop/context/*.md` 长任务恢复摘要。
-- Routable work units：job envelope、global blackboard、dispatch map、pure router、one-shot tick、one-shot relay。
-- Observability / control：read-only node/global summaries，以及 `.metaloop/control/*.json` 显式控制请求。
-- Activation：one-shot scanner、`activation_result.json`、lease / idempotency key、dry-run / execute 模式。
-- Six-gate model、`observe --format brief` 可观测摘要、只读本地 Web dashboard。
-- Prompt-first / code-backed 文档和 skill reference。
-- 删除旧外部产品面，仓库回到 skill/core/library 结构。
+- Skill-first、Prompt-first / code-backed 产品结构；
+- Six-Gate Model 与 User Burden Rule；
+- Mission Capsule、VerificationSpec、ExecutionReport、VerificationResult 和 ReviewResult；
+- Adaptive Goal Loop、event log、thread registry 与 context checkpoints；
+- ExtensionSpec 与 generic validators；
+- engineering governance、显式 change classification 和文档 hash drift 检查；
+- 可选 routable work units、observability、control、dashboard 和 one-shot activation；
+- Progressive Design：目标模型、长期不变量、最小纵切、模块责任、有意让步和证据驱动
+  的逐步扩展。
 
-## v0.2 Skill 内测稳定化
+## 当前阶段：真实项目验证
 
-目标：让团队在真实项目中可以直接调用 `$metaloop`，并明显感受到 design、verification、feedback 的约束价值。
+目标是证明 MetaLoop 能在保持轻量的同时稳定提升 Codex 工作质量。
 
-工作项：
+重点观察：
 
-- 改进 `skills/metaloop/SKILL.md` 的开放任务 design 提示，要求 agent 明确目标、非目标、可观测指标、失败诊断路径和下一轮计划。
-- 强化 User Burden Rule：agent 不要求用户指定 Mission Capsule、VerificationSpec、Adaptive Loop、blackboard、dispatch map、job envelope、tick 或 relay 等内部机制。
-- 增加 2-3 个 domain extension examples：benchmark/metric、文档交付、代码质量门槛。
-- 加强 VerificationSpec review checklist，避免宽松指标、subset-only claim、oracle leakage、选择性汇报。
-- 增加 skill 安装 smoke test 文档和团队反馈模板。
+- 用户只给目标时，Codex 能否形成足够深入且准确的设计；
+- 首个 end-to-end slice 是否足够小，又能验证关键假设；
+- 模块责任与接口是否减少跨模块牵连和并行开发阻塞；
+- VerificationSpec 是否真正覆盖结论，而不是只验证 artifact 存在；
+- repair、redesign 和 stop 决策是否减少重复补丁和无效尝试；
+- 新 session 能否基于项目文档和 `.metaloop/` safe point 快速恢复；
+- 用户感受到的是更清晰、更可靠的 Codex，而不是额外协议负担。
 
-验收：
+代表性 dogfood 应覆盖架构设计、功能扩展、缺陷诊断、长期质量改进和跨 session 工作。
+这些是验证场景，由当前 Codex 根据项目设计具体过程。
 
-- 新用户只看 README 和安装文档就能在 Codex 中使用 `$metaloop`。
-- 复杂任务的 `.metaloop/mission_capsule.json` 包含清晰 VerificationSpec，而不是只有文件存在检查。
-- 失败任务能产出可复用的 observation/diagnosis/next plan，而不是停在“未完成”。
-- 对需要隔离责任的大任务，agent 能主动设计最小 routable work-unit 网络，而不是要求用户手写流程说明。
+阶段通过条件：
 
-## v0.3 Extension Protocol 打磨
+- 多个真实项目能仅通过 `$metaloop` 入口完成设计、执行、验证和反馈闭环；
+- Progressive Design 能更早暴露关键风险，并形成可验证的小步交付；
+- 失败结果留下可复用的诊断和下一计划；
+- 新增协议代码均能追溯到重复出现的实际需求。
 
-目标：让不同领域以轻量方式指定自己的验证语言，而不是把规则塞进 core。
+## 后续候选
 
-工作项：
+### 公共体验
 
-- 定义 extension authoring guide。
-- 为 validators 增加更好的错误信息和 evidence summary。
-- 支持 validator version/hash 记录的更清晰展示。
-- 为 resource gate、manual acceptance 和 forbidden claim 增加 examples。
+- 继续压缩 Skill 的机制曝光，让普通语言始终是主要交互面；
+- 用少量高质量 references 和 examples 帮助 Codex处理常见证据与设计难题；
+- 改善诊断和 observation summary，使用户快速理解当前事实与下一步。
 
-验收：
+### 证据能力
 
-- 新领域可以通过 `extensions/<domain>/profile.json`、examples 和少量 validators 表达完成标准。
-- Core 不出现领域专用业务规则。
+- 根据真实任务补充高价值 validator examples 和 review checklists；
+- 加强 benchmark、质量突破、研究结论和文档交付的证据校准；
+- 记录 validator provenance、版本与 hash 的清晰投影。
 
-## v0.4 Long-Task Feedback Discipline
+### 实现一致性
 
-目标：面向开放目标任务，强化“目标逼近”和上下文恢复，而不是“一次执行”。
+- 评估从 `metaloop_core` 确定性构建 self-contained skill runtime；
+- 保持 portable deployment，同时减少 core/kernel 协议逻辑的重复所有权；
+- 扩展 parity、package 和 installation smoke evidence。
 
-工作项：
+### 外层约束
 
-- 在 skill reference 中加入开放目标任务模板：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
-- 增加失败分类提示：implementation defect、bad hypothesis、insufficient evidence、contract mismatch、resource blocked、target likely infeasible。
-- 让 event log 和 adaptive loop 的 recommended usage 更清晰。
-- 让 `resume_brief.md`、`current_hypothesis.md`、`failed_attempts.md` 成为长任务 handoff 的默认读写点。
+- 当真实项目证明声明式约束不足时，再加入 scoped hooks、sandbox 或 wrapper；
+- 让外层 enforcement 消费现有 locked contracts，不创建第二套任务事实；
+- 保持 control 与 activation 的显式 safe-point 语义。
 
-验收：
+## 能力进入条件
 
-- agent 能在多轮尝试中持续更新 observation、diagnosis 和 next plan。
-- 新 agent 能从 context checkpoint 和 locked artifacts 快速恢复任务，不需要读取完整聊天史。
-- 未达到目标时不会把 artifact production 说成成功。
+一项新能力进入 core 前应同时满足：
 
-## v0.5 强约束评估
-
-目标：只有在内测证明 skill/kernel 不足时，再决定是否添加 hooks、sandbox 或 wrapper runtime。
-
-候选方向：
-
-- pre-run / post-run hooks。
-- validator directory hash pinning。
-- resource approval policy。
-- 外层 wrapper 统一执行 locked VerificationSpec。
-
-不做：
-
-- 不重建独立聊天界面。
-- 不恢复旧外部运行时。
-- 不做重型 scheduler 或自动 agent pool，除非真实团队任务反复证明需要。
-- 不把具体项目、数据集、指标或业务逻辑写进 MetaLoop 本体。
-
-## v0.6 Activation Layer
-
-目标：在 observe/control 稳定后，用可选 activation wrapper 把“用户手动唤醒下游 node”升级为 one-shot scanner。
-
-已落地：
-
-- `activation_result.json`
-- pending envelope scanner
-- lease / idempotency key
-- pending control check
-- explicit worker command plan
-- dry-run / once modes
-
-不做：
-
-- 不把 activation 放进 core 智能逻辑。
-- 不默认启动 daemon/watch mode。
-- 不让 activator 设计任务、修改合同或解释指标。
+1. 多个真实任务反复暴露同类失败；
+2. 仅靠 Skill、reference 或项目文档无法稳定解决；
+3. 存在明确的确定性消费者和独立验证路径；
+4. 新能力保持领域中立并复用现有任务事实；
+5. 最小纵切能够证明收益高于新增心智与维护成本。

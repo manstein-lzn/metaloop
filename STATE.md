@@ -1,77 +1,63 @@
 # MetaLoop 当前状态
 
-最后更新：2026-05-12
+最后更新：2026-07-12
 
 ## 一句话状态
 
-MetaLoop 已收敛为 **Skill-only / skill-only** 产品：团队通过 Codex `$metaloop` skill 使用它；仓库只保留自包含 skill package、`metaloop_core` 协议库、当前文档和测试。旧的仓库级交互运行时、聊天界面、外部 agent 编排器、Node bridge、prompt pack 和相关测试已经移除。
+MetaLoop 当前是一套可直接安装的 Codex 轻量开发治理协议：Codex 负责场景智能，Skill
+提供深度设计与渐进推进纪律，portable kernel 和 `metaloop_core` 负责锁定状态、证据、
+验证、反馈和恢复。
 
-当前补充原则：用户不需要理解 MetaLoop 内部协议。用户给目标、约束和验收判断；Codex 通过 `$metaloop` skill 主动完成 design、VerificationSpec、Adaptive Loop、必要的多节点拆分和后续 run/verify/repair/redesign 流程。
-
-当前主路径：
+## 当前产品模型
 
 ```text
-Codex agent conversation
-  -> $metaloop skill entry
-  -> bundled kernel writes .metaloop artifacts
-  -> Codex executes with project intelligence
-  -> locked validators verify evidence
-  -> repair / redesign / resume / complete decision
-  -> optional tick / outbox / relay for explicit routable handoff
+用户目标
+  -> $metaloop 引导 Codex 检查项目并形成设计
+  -> Mission Capsule + VerificationSpec 锁定当前任务
+  -> Codex 完成一个有界、可验证的工作切片
+  -> ExecutionReport 记录候选证据
+  -> validators / independent reviewer 形成 VerificationResult
+  -> complete | continue | repair | redesign | pivot | stop | escalate
 ```
 
-## 核心判断
+产品体验围绕四项能力组织：
 
-- MetaLoop 的核心不是自己变成 agent runtime，而是稳定复杂任务的 design、verification、feedback 和 audit。
-- MetaLoop 已收敛为六个关键控制点：Design Gate、State Checkpoint、Verification Gate、Adaptive Loop、Control Point、Observation Surface。
-- Prompt-first / code-backed：prompt 和 skill 负责智能，代码和 `.metaloop/` artifacts 负责真相。
-- Design 必须先于执行；Mission Capsule 和 VerificationSpec 是执行合同。
-- Agent 可以设计验证方案，但不能在执行后临时改验证来迁就结果。
-- Domain extension 提供领域验证语言，MetaLoop Core 不塞满领域规则。
-- 多个 Codex thread 可以围绕同一目标协作，但共享真相必须写入 `.metaloop/`，不能只靠聊天记忆。
-- 对超出单个可靠工作单元的复杂任务，MetaLoop 支持可路由工作单元，但仍保持 one-shot 文件操作，不引入后台调度器。
-- 用户必须能随时观察和干预；观察是只读 summary，控制是显式 `.metaloop/control/*.json` 意图文件，不让 dashboard 或 observer 变成第二套调度器。
+- **深度设计**：从愿景推导目标模型、缺失维度、风险、关键选择和长期不变量；
+- **渐进推进**：以最小端到端切片验证假设，通过模块责任和接口持续扩展；
+- **证据验证**：执行前锁定验收，执行后由可追溯证据和独立 authority 决定结果；
+- **反馈恢复**：保存观察、诊断、下一计划和上下文 safe point，支持长任务延续。
 
-## 保留的代码面
+`Progressive Design` 已进入 Skill 和 Design Autonomy：设计深度与当前实现广度相互独立，
+每轮设计讨论应贡献新的推演、风险、选择或更清晰的结构。
 
-- `skills/metaloop/`：可一键部署的 Codex Skill，内含 portable kernel、generic extension、参考文档和 metadata。
-- `src/metaloop_core/`：可复用协议库，提供 Mission Capsule I/O、ExecutionReport I/O、VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、adaptive loop、ObservationReport / DiagnosisReport、repair/redesign vocabulary、routable work unit routing、tick 和 relay。
-- `src/metaloop_core/observe.py` / `control.py`：只读 node/global summaries 和显式 control request 文件。
-- `tools/check_core_import_boundary.py`：确保 core 不重新依赖已移除的外部产品面。
-- `tests/`：只保留 core、skill package、core/skill parity 和 verification 测试。
+## 已交付能力
 
-## 已移除的产品面
+- 自包含 `skills/metaloop/`，可直接安装到 Codex skills 目录；
+- Mission Capsule、ExtensionSpec、VerificationSpec 的锁定、hash 与 revision；
+- ExecutionReport、VerificationResult 和独立 ReviewResult；
+- executable、manual、advisory、resource 和 forbidden-claim 验证语义；
+- Adaptive Goal Loop、ObservationReport、DiagnosisReport 和 typed decisions；
+- event log、thread registry 与 context checkpoints；
+- engineering governance：governing document、module contracts、allowed paths、
+  `repair | extension | redesign` 和 redesign migration plan；
+- 可选 routable work units、one-shot tick/relay、只读 observation、显式 control 和
+  one-shot activation；
+- `metaloop_core` 与 portable skill kernel 的 parity、package 和 import-boundary 测试。
 
-- 仓库级交互命令入口。
-- Rich / prompt-toolkit 交互界面。
-- 旧 Python/Node 对话桥接实验代码。
-- 旧 role pipeline、mission file runtime、storage/runtime/prompt pack 实现。
-- 示例 mission、无关 VSCode extension、旧研究/backlog 文档和对应测试。
+## 实现边界
 
-这次删除是产品决策，不是临时隐藏：用户只需要通过 skill 完成任务，Codex 本身负责自然对话和项目理解。
+- Skill 和 references 承载通用思考原则，当前 Codex 将其适配到具体项目；
+- 项目文档拥有架构、模块契约、迁移计划和领域认知；
+- `metaloop_core` 只拥有确定性的协议状态与验证，不编码场景策略；
+- `.metaloop/` 是任务治理事实，不复制项目架构正文；
+- `allowed_paths` 当前是锁定的施工范围声明；需要强制隔离时由 hook、sandbox 或
+  wrapper 提供；
+- observation、control、tick、relay 和 activation 保持显式、one-shot、可审计；
+- portable kernel 保持自包含，并通过 parity tests 与 core 对齐。
 
-## 当前能力
+## 当前验证
 
-- `skills/metaloop/scripts/metaloop_kernel.py` 支持 `status`、`design`、`run`、`verify`、`review`、`mark`、`threads`、`event`、`adaptive`、`tick`、`relay`。
-- Mission Capsule 内锁定 ExtensionSpec 和 VerificationSpec，并记录 hash。
-- bundled generic extension 支持 `file_exists`、`command`、`forbidden_path`、`json_metric_gate`、`json_field_exists`、`file_contains`、`artifact_hash`、`forbidden_claim`、`manual_acceptance`、`resource_gate`。
-- 验证阶段会检查 capsule/report/spec schema、hash、manual blocker、unsupported blocker 和 hard validator 结果。
-- `review_required` 可由独立 Codex reviewer 写入 `.metaloop/review_result.json`
-  后解除；`human_acceptance_required` 只表示用户显式保留的专属授权。
-- `.metaloop/threads.json` 可记录 persistent Codex thread 的 role、thread_id、职责和 handoff 状态。
-- `.metaloop/event_log.jsonl` 可记录长任务观察、决策、阻塞、handoff、验证、repair 和 redesign。
-- `.metaloop/adaptive_loop.json` 支持通用目标逼近闭环：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
-- `.metaloop/context/*.md` 支持长任务上下文压缩：`resume_brief.md`、`current_hypothesis.md`、`failed_attempts.md`、`project_brief.md`。
-- `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
-- `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
-- bundled kernel 支持 `observe --format brief`，用于最小 dashboard/仪表盘式状态视图。
-- `scripts/metaloop_dashboard.py` 提供本地只读 Web dashboard，默认绑定 localhost，只读取 brief summary，不提供 mutation endpoint。
-- `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
-- `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
-- Engineering governance 首个纵向切片已实现：可锁定 governing document、module contracts、允许路径和显式 `repair | extension | redesign` 分类；redesign 必须绑定迁移计划。文档 hash 漂移会在 run/verify 前失败。允许路径目前是声明，不是不可绕过的 filesystem enforcement。
-- `classify_dissatisfaction`、adaptive loop 和 feedback 不再从自由文本关键词制造 repair/redesign/pivot；语义决策由 Codex 显式提供，代码只验证词表或映射低维状态。
-
-## 当前测试目标
+仓库的完成检查为：
 
 ```bash
 python3 tools/check_core_import_boundary.py
@@ -79,24 +65,15 @@ python3 tools/check_core_import_boundary.py
 git diff --check
 ```
 
-当前成功标准：仓库安装不暴露用户命令入口，测试只覆盖 skill/core 产品面，文档不再引导团队使用旧交互面。
+2026-07-12 的 Progressive Design 切片通过完整测试、import boundary、安装哈希检查和
+本地 `design -> run -> verify` smoke test。
 
-## 下一步
+## 当前重点
 
-1. 继续打磨 `$metaloop` skill 的主动 design 指南，让 agent 自动选择单节点、多 thread 或 routable work units，而不是要求用户指定 MetaLoop 内部机制。
-2. 增加少量高质量 domain extension examples，但不要把领域规则写死进 core。
-3. 加强 adaptive loop 的失败诊断和下一轮计划模板，保持 prompt-first，不急于代码化复杂策略。
-4. 观察 context checkpoint 在真实长任务中的使用质量，避免它膨胀成 transcript。
-5. 建立团队内测反馈机制：记录哪些任务需要更强 hooks、sandbox 或 wrapper runtime，再决定是否新增外层约束。
-
-## 不要做
-
-- 不要重建独立聊天界面。
-- 不要恢复旧外部运行时或多 agent 编排器。
-- 不要把 Codex 自述完成当作 verified completion。
-- 不要把完整聊天史当 operational memory。
-- 不要把 context checkpoint 写成完整聊天记录；它只保存恢复任务所需的压缩事实。
-- 不要为每个有用推理模式新增 Python 模块。
-- 不要在没有真实需求前添加重型 scheduler、agent pool 或领域专用框架。
-- 不要把任何具体项目、数据集、指标或业务逻辑写进 MetaLoop core 或 skill；这些只应出现在目标项目自己的 ExtensionSpec、VerificationSpec、capsule、blackboard 或模板里。
-- 不要把 activation 扩展成常驻 watcher、daemon 或隐藏执行器；它仍然必须是 one-shot、可审计、可停止的薄层。
+1. 在真实项目中持续 dogfood Progressive Design，观察设计质量、返工、验证强度和
+   长任务恢复效果；
+2. 让 README、Skill、STATE、ROADMAP、HANDOFF 和安装入口保持同一产品叙事；
+3. 从反复出现的真实失败中选择新的 validator、reference 或外层 enforcement；
+4. 评估以模块化 core 为唯一实现来源、确定性生成 self-contained skill runtime 的路径，
+   降低双实现长期维护成本；
+5. 保持用户入口为一句目标表达，由 Codex 选择最小充分的协议形态。
