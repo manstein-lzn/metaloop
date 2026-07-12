@@ -66,6 +66,23 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "ask only blocking questions" in openai_yaml
 
 
+def test_metaloop_skill_guides_progressive_design_without_new_runtime_concepts() -> None:
+    skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
+    design = (ROOT / "docs" / "metaloop_design_autonomy.md").read_text(encoding="utf-8")
+    normalized_design = " ".join(design.split())
+
+    assert "Progressive Design Rule" in skill
+    assert "coherent target model" in skill
+    assert "durable invariants" in skill
+    assert "smallest end-to-end slice" in skill
+    assert "cohesive module ownership" in skill
+    assert "deliberate concessions" in skill
+    assert "project-native path" in skill
+    assert "Each design response should contribute a new deduction" in skill
+    assert "design depth and implementation breadth are independent" in normalized_design
+    assert "The concrete architecture, modules, slices, concessions, and evidence belong to" in normalized_design
+
+
 def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     reference = (ROOT / "skills" / "metaloop" / "references" / "lightweight_protocol.md").read_text(encoding="utf-8")
 

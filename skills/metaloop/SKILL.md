@@ -96,6 +96,27 @@ Lock the corresponding Mission Capsule and VerificationSpec with the bundled
 kernel before implementation when the task is substantial or verification
 matters.
 
+## Progressive Design Rule
+
+For architecture and long-horizon work, Codex turns the user's vision into a
+design that can grow through evidence:
+
+- derive a coherent target model and surface missing dimensions, risks, and
+  choices;
+- identify the durable invariants that later slices must preserve;
+- select the smallest end-to-end slice that tests the current assumptions;
+- define cohesive module ownership and explicit interfaces for independent
+  expansion;
+- record deliberate concessions, their scope, and the evidence that should
+  trigger revisiting them;
+- use an established project-native path as the first walking skeleton when it
+  provides representative evidence;
+- advance only when evidence from the current slice justifies the next one.
+
+Each design response should contribute a new deduction, missing dimension,
+risk, choice, or clearer structure. Summarize established context only when it
+creates a more useful shared model.
+
 For architecture, behavior, public-contract, or cross-module engineering work,
 also identify one governing project document and the affected module contracts.
 Classify the change explicitly as `repair`, `extension`, or `redesign`; never
