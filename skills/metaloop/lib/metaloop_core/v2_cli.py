@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from metaloop_core.durable import DurableStateError, DurableStore
+from metaloop_core.engineering_governance import build_v2_governance
+from metaloop_core.schemas import ENGINEERING_CHANGE_TYPES
 
 
 V2_COMMANDS = {"project", "task", "attempt", "evaluate", "recover"}
@@ -40,6 +42,11 @@ def register_v2_parsers(subparsers: argparse._SubParsersAction[argparse.Argument
     task_contract.add_argument("--task", required=True)
     task_contract.add_argument("--expected-version", required=True, type=int)
     task_contract.add_argument("--file", required=True)
+    task_contract.add_argument("--change-kind", choices=sorted(ENGINEERING_CHANGE_TYPES))
+    task_contract.add_argument("--stable-input", action="append", default=[], metavar="ROLE=PATH")
+    task_contract.add_argument("--managed-output", action="append", default=[], metavar="ROLE=PATH")
+    task_contract.add_argument("--allowed-path", action="append", default=[])
+    task_contract.add_argument("--migration-plan")
     task_transition = task_sub.add_parser("transition", help="Pause, resume, or cancel a Task.")
     task_transition.add_argument("--task", required=True)
     task_transition.add_argument("--lifecycle", required=True, choices=["open", "paused", "cancelled"])
@@ -183,7 +190,22 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
         if args.task_command == "set-default":
             return store.set_default_task(args.task)
         if args.task_command == "contract":
-            return store.lock_contract(args.task, _read_json_object(Path(args.file)), expected_version=args.expected_version)
+            content = _read_json_object(Path(args.file))
+            governance_requested = any(
+                [args.change_kind, args.stable_input, args.managed_output, args.allowed_path, args.migration_plan]
+            )
+            if governance_requested:
+                if "governance" in content:
+                    raise ValueError("contract file already contains governance; do not also pass governance flags")
+                content["governance"] = build_v2_governance(
+                    store.workspace,
+                    change_kind=args.change_kind,
+                    stable_inputs=[_parse_role_path(item) for item in args.stable_input],
+                    managed_outputs=[_parse_role_path(item) for item in args.managed_output],
+                    allowed_paths=args.allowed_path,
+                    migration_plan=args.migration_plan,
+                )
+            return store.lock_contract(args.task, content, expected_version=args.expected_version)
         if args.task_command == "transition":
             return store.transition_task(args.task, lifecycle=args.lifecycle, expected_version=args.expected_version, reason=args.reason)
         if args.task_command == "depend":
@@ -300,6 +322,13 @@ def _parse_json_object(raw: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("JSON value must be an object")
     return payload
+
+
+def _parse_role_path(value: str) -> tuple[str, str]:
+    role, separator, path = value.partition("=")
+    if not separator or not role.strip() or not path.strip():
+        raise ValueError("governance ref must use ROLE=PATH")
+    return role.strip(), path.strip()
 
 
 def _jsonable(value: Any) -> Any:

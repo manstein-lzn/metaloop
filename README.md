@@ -95,10 +95,11 @@ MetaLoop 通过六个轻量控制点组织工作：
 5. `Control Point`：在 safe point 消费显式控制意图；
 6. `Observation Surface`：以只读摘要呈现状态、阻塞和下一步。
 
-对于需要显式工程治理的 v1 兼容任务，Mission Capsule 可以锁定 change type、governing
-document、module contracts、allowed paths 和 redesign migration plan。引用文件在执行与
-验证前重新哈希，漂移必须通过显式 contract revision 处理。治理字段是可选协议能力，
-不是把项目架构复制进 MetaLoop core。
+对于 architecture、public-contract、migration 或 cross-module 任务，V2
+ContractRevision 可以选择性锁定 governance：显式 `change_kind`、不允许漂移的
+`stable_inputs`、必须作为 Attempt evidence 交付的 `managed_outputs`、声明性
+`allowed_paths`，以及 redesign 必需的 migration plan。治理字段不是第二套状态，也不把
+项目架构复制进 MetaLoop core。
 
 ## 职责分工
 
@@ -131,6 +132,7 @@ KERNEL=skills/metaloop/scripts/metaloop_kernel.py
 python3 "$KERNEL" --workspace . project init
 python3 "$KERNEL" --workspace . project status
 python3 "$KERNEL" --workspace . task list
+python3 "$KERNEL" --workspace . task contract --help
 python3 "$KERNEL" --workspace . recover show --task <task_id>
 python3 "$KERNEL" --workspace . project integrity
 python3 "$KERNEL" --workspace . project export

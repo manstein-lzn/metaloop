@@ -48,10 +48,9 @@ These are intelligence tasks. Hardcoding them too early makes MetaLoop rigid and
 
 Use code only where durable truth, verification, and recovery matter:
 
-- writing Mission Capsule
-- locking ExtensionSpec / VerificationSpec
+- locking Task ContractRevision with ExtensionSpec / VerificationSpec
 - validating schema and hashes
-- writing ExecutionReport, VerificationResult, ObservationReport, DiagnosisReport, AdaptiveLoopState, event log, and thread registry
+- writing Attempt evidence, Evaluation chains, DecisionEvents, RecoveryViews, and thread assignments
 - running deterministic validators
 - summarizing current workspace state
 - preventing accidental artifact drift
@@ -114,7 +113,7 @@ The main `$metaloop` skill should optimize for a strong Codex interaction:
 - repair/redesign/pivot/stop decisions after failed verification
 - only blocking questions to the user
 
-Details such as Mission Capsule fields, job envelopes, relay mechanics, and
+Details such as ContractRevision fields, job envelopes, relay mechanics, and
 validator schemas belong in references or generated artifacts unless they are
 needed in the first response.
 
@@ -122,15 +121,12 @@ needed in the first response.
 
 Current `metaloop_core` already owns the small code-backed truth layer:
 
-- Mission Capsule
-- ExtensionSpec / VerificationSpec
-- ExecutionReport
-- VerificationResult
-- ObservationReport
-- DiagnosisReport
-- Adaptive Goal Loop
-- EventLog
-- ThreadRegistry
+- Project / Task / ContractRevision
+- ExtensionSpec / VerificationSpec content
+- Attempt checkpoints and evidence
+- Evaluation / Review chain
+- DecisionEvents and RecoveryView
+- Thread assignments
 - Routable work-unit schemas
 - Pure router decisions
 - One-shot tick and relay results

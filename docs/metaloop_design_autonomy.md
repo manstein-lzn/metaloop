@@ -23,8 +23,8 @@ Codex supplies:
 
 - project inspection
 - task-shape classification
-- Mission Capsule draft
-- ExtensionSpec / VerificationSpec draft
+- Task ContractRevision draft
+- ExtensionSpec / VerificationSpec draft inside that contract
 - protocol artifact layout
 - decision on single-node, multi-thread, or routable work units
 - repair, redesign, or handoff discipline after verification
@@ -43,7 +43,7 @@ implementation. It should:
 - ask only blocking questions
 - state safe assumptions when proceeding without user input
 
-Do not ask the user whether to use "Mission Capsule", "VerificationSpec",
+Do not ask the user whether to use "Task", "ContractRevision", "VerificationSpec",
 "blackboard", "job envelope", "tick", or "relay". Those are MetaLoop internal
 mechanisms. Explain the plan in ordinary project terms.
 
@@ -78,10 +78,10 @@ context is summarized when doing so produces a more useful shared model.
 
 Use the smallest shape that preserves correctness and recovery:
 
-- `single_node`: one local Mission Capsule, one ExecutionReport, one
-  VerificationResult, and one Adaptive Goal Loop are enough.
+- `single_node`: one Task, one current ContractRevision, and one open Attempt at
+  a time are enough.
 - `multi_thread`: several persistent Codex threads are useful, but they share
-  one workspace truth through `.metaloop/` artifacts.
+  one SQLite work graph and use explicit Task assignments.
 - `routable_work_units`: separate workspaces or responsibility boundaries need
   job envelopes, outbox records, relay delivery, and shared blackboard facts.
 
@@ -107,7 +107,7 @@ Blocking questions include:
 - the task goal conflicts with existing constraints
 - verification would otherwise be fake or too weak
 
-Non-blocking details should become assumptions in the draft capsule, with the
+Non-blocking details should become assumptions in the draft contract, with the
 assumption made explicit and revisable before locking.
 
 ## Target-Project Artifacts

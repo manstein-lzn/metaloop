@@ -24,14 +24,14 @@ Goal input
 Mapped to MetaLoop:
 
 ```text
-Goal input      -> Mission Capsule / GoalSpec
+Goal input      -> Task / ContractRevision
 Controller      -> Codex agent + MetaLoop protocol
 Action          -> code change / experiment / command / analysis
 System          -> local project, model, benchmark, product, or workflow
 Output          -> artifacts, metrics, logs, behavior
-Observation     -> ObservationReport
-Evaluation      -> VerificationResult
-Diagnosis       -> DiagnosisReport / AdaptiveLoopState
+Observation     -> Attempt evidence / DecisionEvent
+Evaluation      -> Evaluation / Review chain
+Diagnosis       -> DecisionEvent diagnosis
 Decision        -> complete / continue / repair / redesign / pivot / stop / escalate
 Next action     -> next_plan
 ```
@@ -40,12 +40,12 @@ Next action     -> next_plan
 
 MetaLoop's successful pieces remain the foundation:
 
-- Mission Capsule for goal, scope, constraints, non-goals, and authority.
-- ExtensionSpec / VerificationSpec for locked evidence language and gates.
-- ExecutionReport for what actually ran or changed.
-- VerificationResult for independent gate evaluation.
-- Adaptive Goal Loop for iterative learning and next-plan continuity.
-- EventLog and ThreadRegistry for durable handoff and long-task state.
+- Task and ContractRevision for goal, scope, constraints, non-goals, and authority.
+- ExtensionSpec / VerificationSpec as immutable contract content.
+- Attempt checkpoints and evidence for what actually ran or changed.
+- Evaluation / Review chain for independent gate evaluation.
+- DecisionEvents for iterative learning and next-plan continuity.
+- RecoveryView and thread assignments for durable handoff and task switching.
 - Self-contained `$metaloop` skill kernel for portable protocol state.
 - `metaloop_core` as the reusable state and verification backend.
 
@@ -77,7 +77,7 @@ These are generic evidence-processing artifacts. They are not domain intelligenc
    `metaloop_core` must not know task-specific metrics, screenshots, logs, or paper tables. Domain extensions define those evidence languages.
 
 4. Keep constraints stable.
-   Execution failure must not weaken Mission Capsule or VerificationSpec. Contract changes route through redesign.
+   Execution failure must not weaken ContractRevision or VerificationSpec. Contract changes route through redesign.
 
 5. Keep decisions typed.
    Use `complete`, `continue`, `repair`, `redesign`, `pivot`, `stop`, or `escalate`; do not invent vague status prose as control flow.
@@ -116,7 +116,7 @@ ExecutionReport + VerificationResult
 - No automatic research platform.
 - No domain-specific validators in core.
 - No new multi-agent scheduler.
-- No replacement of Mission Capsule or VerificationSpec.
+- No second contract truth beside ContractRevision and VerificationSpec.
 - No attempt to make the skill prompt a non-bypassable enforcement layer.
 
 ## Acceptance

@@ -30,10 +30,10 @@ Skill package        thin kernel + vendored canonical core
   acceptance chain。
 - v1 migration 重新验证内容与 validators，初始化 v2 后旧写命令 fail closed。
 - Progressive Design Rule：完整方向、最小端到端切片、显式边界、让步和重访证据。
-- 可选 engineering governance refs/hashes：change type、governing document、module
-  contracts、allowed paths 和 redesign migration plan。
+- V2-native optional governance：显式 change kind、stable inputs、managed outputs、
+  allowed paths 和 redesign migration plan，贯穿 Attempt 与 acceptance 生命周期。
 - canonical core 生成到 self-contained Skill，portable kernel 保持薄启动器。
-- 只读 dashboard、显式 controls、one-shot activation 及现有 v1 routing 能力继续兼容。
+- 只读 dashboard、显式 controls 和 v1 read/migration compatibility。
 
 ## 稳定边界
 
@@ -51,7 +51,7 @@ Skill package        thin kernel + vendored canonical core
 3. fingerprint 是否出现影响真实工作的误报或漏报。
 4. DecisionEvent 与恢复投影的信息密度是否合适。
 5. Progressive Design 是否降低返工，同时避免设计仪式过重。
-6. governance refs/hashes 是否只在需要时提供价值。
+6. V2 governance 是否只在 architecture-sensitive 任务中提供净价值。
 7. SQLite writer conflict 和显式 Task scope 是否符合真实 multi-thread 使用。
 
 ## 当前验证

@@ -22,9 +22,9 @@ MetaLoop should preserve:
 
 - deep Design
 - generic Adaptive Goal Loop for repeated problem solving
-- structured Mission Capsule
+- immutable ContractRevision
 - durable `.metaloop/` artifacts
-- independent VerificationResult
+- content-bound Evaluation and independent Review
 - repair/redesign/resume decisions
 - a bundled lightweight kernel for one-click skill deployment
 - persistent Codex thread agents when a project needs separate long-lived responsibilities
@@ -81,9 +81,9 @@ hooks / sandbox / wrapper runtime
 
 Use prompts, playbooks, and examples for understanding, diagnosis, strategy, and next-plan decisions. Use bundled scripts, schemas, validators, and `.metaloop/` artifacts for locked state, verification, audit, and recovery. Do not add framework code when a small prompt protocol and durable artifact are enough.
 
-## Minimal Capsule Truth
+## Minimal Contract Truth
 
-A Mission Capsule should be readable by both user and Codex. Keep it focused on:
+A ContractRevision should be readable by both user and Codex. Keep it focused on:
 
 - intent
 - context
@@ -94,14 +94,13 @@ A Mission Capsule should be readable by both user and Codex. Keep it focused on:
 - forbidden paths
 - evidence requirements
 - verification plan
-- current status
+- optional governance refs and scope
 
 It is not a full transcript.
 
-In v2 this immutable content is a ContractRevision. Task lifecycle,
-active-Attempt, dependency, and acceptance-head state are stored separately.
-The root Mission Capsule remains a v1-only artifact or migration input. It is
-not writable canonical state after v2 initialization.
+Task lifecycle, active-Attempt, dependency, and acceptance-head state are stored
+separately. The root Mission Capsule remains a v1-only artifact or migration
+input. It is not writable canonical state after v2 initialization.
 
 ## Durable Attempts And Recovery
 
@@ -140,10 +139,10 @@ runtime. The six gates are:
 Workers should apply these gates at safe points: before attempts, before
 expensive work, after attempts, before completion claims, and before handoff.
 
-## Context Checkpoints
+## Legacy Context Checkpoints
 
-Long tasks should not rely on the private Codex thread staying readable
-forever. Keep compact Markdown recovery notes in:
+V2 long tasks use RecoveryView and append-only Attempt checkpoints. A v1-only
+workspace may keep compact Markdown recovery notes in:
 
 ```text
 .metaloop/context/
@@ -157,9 +156,9 @@ The minimal files are:
 - `failed_attempts.md`: attempted directions that should not be repeated.
 - `project_brief.md`: stable project facts, constraints, and key paths.
 
-These files are not authoritative task truth. They help a new Codex thread
-resume quickly before reading `mission_capsule.json`, `verification_result.json`,
-`adaptive_loop.json`, and selected evidence.
+These files are not authoritative task truth and are not written after v2
+initialization. Import or summarize useful legacy context into the V2 Task and
+RecoveryView.
 
 ## Decision Discipline
 
@@ -215,11 +214,20 @@ only before v2 initialization or as read-only migration input. V1 mutable
 commands fail closed in a v2 workspace.
 Do not assume a repository-level command is installed in the target project.
 
-In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Adaptive Goal Loop state, Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
+In the MetaLoop repository, `metaloop_core` is the reusable V2 state and
+verification backend for Task identity, immutable contracts, recoverable
+Attempts, evidence, Evaluations, DecisionEvents, thread assignments, and
+RecoveryViews. The Skill kernel remains self-contained for one-click deployment;
+repository tests keep its vendored core identical to canonical source.
 
-The bundled kernel also writes `.metaloop/execution_report.json` when execution can be represented as one or more workspace commands. Verification should require this report before claiming completion, because a validator pass without a recorded execution can hide skipped or drifted work.
+V1-only workspaces may still write Mission Capsule, ExecutionReport, and
+VerificationResult compatibility artifacts before migration. They are not a
+second new-work path and become read-only input once V2 exists.
 
-The minimum design gate is intentionally stricter than a plain prompt: intent alone is insufficient. A locked capsule should include design rationale, at least one explicit non-goal, acceptance criteria, and a hard verification path unless the user explicitly accepts manual-only review.
+The minimum V2 Design Gate is stricter than a plain prompt: intent alone is
+insufficient. A locked ContractRevision should include rationale, explicit
+non-goals, acceptance criteria, and executable verification unless authority is
+explicitly delegated to a reviewer or reserved for the user.
 
 ## Persistent Agent Threads
 
@@ -230,7 +238,7 @@ The recommended shape is:
 ```text
 interface thread: user conversation and project stewardship
 design thread: requirement exploration and VerificationSpec design
-worker thread: implementation against locked capsule
+worker thread: implementation against locked ContractRevision
 reviewer thread: independent contract/evidence review
 verifier/kernel: deterministic checks from locked VerificationSpec
 ```
@@ -272,11 +280,15 @@ python3 "$KERNEL" --workspace . event append \
   --next-action "mark blocked or redesign resource gate"
 ```
 
-Events are not operational authority. They do not unlock a capsule, modify a VerificationSpec, or mark completion. They make long-task state inspectable and resumable without forcing a complex scheduler.
+Events are not operational authority. They do not replace a ContractRevision,
+modify locked acceptance, or mark completion. They make long-task state
+inspectable and resumable without forcing a complex scheduler.
 
 ## VerificationSpec
 
-ExtensionSpec describes the task/domain verification language. VerificationSpec describes this exact task's completion gates. Both are locked inside the Mission Capsule.
+ExtensionSpec describes the task/domain verification language. VerificationSpec
+describes this exact task's completion gates. In V2 they are immutable
+ContractRevision content; Mission Capsule ownership is v1-only.
 
 The bundled kernel supports the `generic` extension first:
 

@@ -8,6 +8,12 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Iterator
 
+from metaloop_core.engineering_governance import (
+    normalize_legacy_governance,
+    summarize_v2_governance,
+    validate_v2_governance,
+    verify_v2_governance,
+)
 from metaloop_core.ids import new_id, utc_now
 
 
@@ -366,6 +372,7 @@ class DurableStore:
 
     def lock_contract(self, task_id: str, content: dict[str, Any], *, expected_version: int) -> dict[str, Any]:
         self._validate_contract(content)
+        self._assert_governance(content, phase="contract lock")
         with self.transaction() as connection:
             task = self._task(connection, task_id)
             if task["active_attempt_id"]:
@@ -430,6 +437,7 @@ class DurableStore:
             if unresolved:
                 raise InvalidTransitionError("Task is blocked by dependencies: " + ", ".join(unresolved))
             contract = self._contract(connection, task["contract_head_id"])
+            self._assert_governance(contract["content"], phase="attempt start")
             normalized_plan = _clean_text(plan, "plan")
             snapshot = input_snapshot or {}
             snapshot_hash = content_hash(snapshot)
@@ -547,6 +555,7 @@ class DurableStore:
             if task["active_attempt_id"] != attempt_id:
                 raise ConflictError("Task active_attempt_ref does not match the Attempt")
             self._assert_live_attempt_evidence(connection, attempt, phase="seal")
+            self._assert_attempt_governance(connection, attempt, phase="seal", require_managed_outputs=True)
             manifest = self._build_attempt_manifest(connection, attempt, outcome=_clean_text(outcome, "outcome"))
             execution_hash = content_hash(manifest)
             sealed_at = utc_now()
@@ -619,6 +628,7 @@ class DurableStore:
             task_id = str(attempt["task_id"])
             contract_hash = str(contract["content_hash"])
             self._assert_live_attempt_evidence(connection, attempt, phase="verification")
+            self._assert_attempt_governance(connection, attempt, phase="verification", require_managed_outputs=True)
 
         validators = spec.get("validators", []) if isinstance(spec, dict) else []
         results: list[dict[str, Any]] = []
@@ -683,6 +693,12 @@ class DurableStore:
                 raise ConflictError("ContractRevision changed while validators were running")
             self._assert_attempt_content(connection, current_attempt, phase="verification")
             self._assert_live_attempt_evidence(connection, current_attempt, phase="verification")
+            self._assert_attempt_governance(
+                connection,
+                current_attempt,
+                phase="verification",
+                require_managed_outputs=True,
+            )
             return self._insert_evaluation(
                 connection,
                 task_id=task_id,
@@ -718,6 +734,8 @@ class DurableStore:
             attempt = self._root_attempt_for_evaluation(connection, subject)
             if authority != "user" and reviewer.strip().casefold() == str(attempt.get("actor") or "").casefold():
                 raise ValueError("reviewer must be independent from the Attempt actor")
+            self._assert_live_attempt_evidence(connection, attempt, phase="review")
+            self._assert_attempt_governance(connection, attempt, phase="review", require_managed_outputs=True)
             return self._insert_evaluation(
                 connection,
                 task_id=subject["task_id"],
@@ -755,6 +773,7 @@ class DurableStore:
                 raise InvalidTransitionError("Evaluation chain does not use the current ContractRevision")
             self._validate_acceptance_chain(chain)
             self._assert_live_attempt_evidence(connection, attempt, phase="acceptance")
+            self._assert_attempt_governance(connection, attempt, phase="acceptance", require_managed_outputs=True)
             self._cas_task(
                 connection,
                 task_id,
@@ -989,6 +1008,17 @@ class DurableStore:
             "verification_spec": capsule.get("verification_spec", {"validators": []}),
             "legacy": {"capsule_id": capsule.get("capsule_id"), "revision": capsule.get("revision")},
         }
+        legacy_governance = capsule.get("engineering_governance")
+        if legacy_governance is not None:
+            try:
+                normalized_governance = normalize_legacy_governance(legacy_governance)
+            except ValueError:
+                contract_content["legacy"]["engineering_governance"] = legacy_governance
+            else:
+                if normalized_governance is not None and not verify_v2_governance(self.workspace, normalized_governance):
+                    contract_content["governance"] = normalized_governance
+                elif normalized_governance is not None:
+                    contract_content["legacy"]["engineering_governance"] = normalized_governance
         self._validate_contract(contract_content)
         with self.transaction() as connection:
             if connection.execute("SELECT 1 FROM tasks LIMIT 1").fetchone() is not None:
@@ -1333,6 +1363,8 @@ class DurableStore:
                     contract = self._contract(connection, task_dict["contract_head_id"])
                     if contract["task_id"] != task_dict["task_id"]:
                         errors.append(f"contract head belongs to another Task: {task_dict['task_id']}")
+                    governance_errors = validate_v2_governance(contract["content"].get("governance"))
+                    errors.extend(f"{error}: {task_dict['task_id']}" for error in governance_errors)
                 if task_dict["active_attempt_id"]:
                     attempt = self._attempt(connection, task_dict["active_attempt_id"])
                     if attempt["status"] != "open" or attempt["task_id"] != task_dict["task_id"]:
@@ -1368,6 +1400,19 @@ class DurableStore:
                 if latest_attempt is not None:
                     workspace_errors.extend(
                         self._live_attempt_evidence_errors(connection, dict(latest_attempt))
+                    )
+                    workspace_errors.extend(
+                        self._attempt_governance_errors(
+                            connection,
+                            dict(latest_attempt),
+                            phase="integrity",
+                            require_managed_outputs=True,
+                        )
+                    )
+                elif default_task["contract_head_id"]:
+                    default_contract = self._contract(connection, default_task["contract_head_id"])
+                    workspace_errors.extend(
+                        self._governance_errors(default_contract["content"], phase="integrity")
                     )
                 if default_task["acceptance_head_id"]:
                     try:
@@ -1889,6 +1934,92 @@ class DurableStore:
                 errors.append(f"evidence hash drift: {item['path']}")
         return errors
 
+    def _governance_errors(
+        self,
+        contract_content: dict[str, Any],
+        *,
+        phase: str,
+        evidence_paths: set[str] | None = None,
+        require_managed_outputs: bool = False,
+    ) -> list[str]:
+        errors = verify_v2_governance(
+            self.workspace,
+            contract_content.get("governance"),
+            evidence_paths=evidence_paths,
+            require_managed_outputs=require_managed_outputs,
+        )
+        qualified: list[str] = []
+        for error in errors:
+            if ": " in error:
+                summary, detail = error.split(": ", 1)
+                qualified.append(f"{summary} before {phase}: {detail}")
+            else:
+                qualified.append(f"{error} before {phase}")
+        return qualified
+
+    def _assert_governance(
+        self,
+        contract_content: dict[str, Any],
+        *,
+        phase: str,
+        evidence_paths: set[str] | None = None,
+        require_managed_outputs: bool = False,
+    ) -> None:
+        errors = self._governance_errors(
+            contract_content,
+            phase=phase,
+            evidence_paths=evidence_paths,
+            require_managed_outputs=require_managed_outputs,
+        )
+        if errors:
+            raise InvalidTransitionError("; ".join(errors))
+
+    def _attempt_governance_errors(
+        self,
+        connection: sqlite3.Connection,
+        attempt: dict[str, Any],
+        *,
+        phase: str,
+        require_managed_outputs: bool,
+    ) -> list[str]:
+        contract = self._contract(connection, attempt["contract_id"])
+        evidence_paths = {
+            self._workspace_relative_path(str(row[0]))
+            for row in connection.execute("SELECT path FROM evidence WHERE attempt_id = ?", (attempt["attempt_id"],))
+        }
+        return self._governance_errors(
+            contract["content"],
+            phase=phase,
+            evidence_paths=evidence_paths,
+            require_managed_outputs=require_managed_outputs,
+        )
+
+    def _assert_attempt_governance(
+        self,
+        connection: sqlite3.Connection,
+        attempt: dict[str, Any],
+        *,
+        phase: str,
+        require_managed_outputs: bool,
+    ) -> None:
+        errors = self._attempt_governance_errors(
+            connection,
+            attempt,
+            phase=phase,
+            require_managed_outputs=require_managed_outputs,
+        )
+        if errors:
+            raise InvalidTransitionError("; ".join(errors))
+
+    def _workspace_relative_path(self, value: str) -> str:
+        path = Path(value)
+        if not path.is_absolute():
+            return path.as_posix()
+        try:
+            return path.resolve().relative_to(self.workspace).as_posix()
+        except ValueError:
+            return str(path.resolve())
+
     def _assert_live_attempt_evidence(
         self,
         connection: sqlite3.Connection,
@@ -2112,8 +2243,11 @@ class DurableStore:
 
     def _recovery_source(self, connection: sqlite3.Connection, task: dict[str, Any]) -> dict[str, Any]:
         contract_hash = ""
+        governance = None
         if task["contract_head_id"]:
-            contract_hash = self._contract(connection, task["contract_head_id"])["content_hash"]
+            contract = self._contract(connection, task["contract_head_id"])
+            contract_hash = contract["content_hash"]
+            governance = summarize_v2_governance(self.workspace, contract["content"].get("governance"))
         active_cursor = 0
         if task["active_attempt_id"]:
             active_cursor = int(connection.execute("SELECT COALESCE(MAX(seq), 0) FROM attempt_records WHERE attempt_id = ?", (task["active_attempt_id"],)).fetchone()[0])
@@ -2143,6 +2277,7 @@ class DurableStore:
             "task_id": task["task_id"],
             "task_state_version": task["state_version"],
             "contract_head_ref": {"id": task["contract_head_id"], "hash": contract_hash},
+            "governance": governance,
             "active_attempt_ref": {"id": task["active_attempt_id"], "event_cursor": active_cursor},
             "acceptance_head_id": task["acceptance_head_id"],
             "dependency_refs": dependency_refs,
@@ -2312,6 +2447,9 @@ class DurableStore:
                 raise ValueError(f"ContractRevision {key} must be a list")
         if not isinstance(content.get("verification_spec"), dict):
             raise ValueError("ContractRevision requires verification_spec")
+        governance_errors = validate_v2_governance(content.get("governance"))
+        if governance_errors:
+            raise ValueError("invalid ContractRevision governance: " + "; ".join(governance_errors))
 
 
 def _manual_authority(validator: dict[str, Any]) -> str:

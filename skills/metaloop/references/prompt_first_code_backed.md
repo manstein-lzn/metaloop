@@ -12,7 +12,7 @@ Use prompt / skill instructions / examples for:
 
 - understanding the task
 - asking sharp questions
-- designing Mission Capsule and VerificationSpec
+- designing the Task ContractRevision and its VerificationSpec
 - interpreting evidence
 - diagnosing failure
 - choosing continue / repair / pivot / redesign / stop / escalate
@@ -25,15 +25,14 @@ Use code / kernel / validators for:
 - Task compare-and-swap and one-open-Attempt uniqueness
 - exact replay fingerprints and recorded retry reasons
 - monotonic DecisionEvent cursors and RecoveryView freshness
-- locked state
+- locked ContractRevision and Attempt evidence
 - schema and hash checks
-- ExecutionReport and VerificationResult
-- ObservationReport and DiagnosisReport when available
-- Adaptive Goal Loop state
-- event log and thread registry
+- Evaluation and Review chains
+- Task- or Project-scoped DecisionEvents
+- thread assignments and RecoveryView freshness
 - deterministic validation
 - audit and resume
-- locking and rechecking governing-document and module-contract refs/hashes
+- locking and rechecking optional V2 governance refs/hashes
 
 Prefer examples before framework code. For domain behavior, write playbooks and VerificationSpec examples first. Promote behavior into code only when it must be machine-checked, routed, recovered, or shared across agents as durable state.
 

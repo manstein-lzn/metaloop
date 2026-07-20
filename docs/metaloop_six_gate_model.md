@@ -31,16 +31,16 @@ Before substantial execution, Codex must clarify:
 - stopping conditions
 - repair/redesign triggers
 
-MetaLoop code only locks this as Mission Capsule and VerificationSpec. It does
-not design the solution.
+MetaLoop code only locks this as a Task ContractRevision and VerificationSpec.
+It does not design the solution. Mission Capsule is the V1 migration shape.
 
 ### 2. State Checkpoint
 
 After important actions, Codex records compact state:
 
-- event log entries for observations, decisions, blockers, handoffs
-- adaptive loop iterations for attempts and diagnoses
-- context checkpoints for recovery from context growth or thread reset
+- Attempt records and exact evidence for execution progress
+- DecisionEvents for observations, decisions, blockers, and handoffs
+- RecoveryView for context growth, task switching, or thread reset
 
 The point is continuity, not control.
 
@@ -94,7 +94,7 @@ Codex workers should check and update MetaLoop at predictable safe points.
 Before starting an attempt:
 
 - inspect status, pending controls, and relevant context checkpoints
-- confirm the Mission Capsule and VerificationSpec are still the active target
+- confirm the Task, ContractRevision, and VerificationSpec are still the active target
 - record an event if an important assumption or blocker is found
 
 Before expensive work:
@@ -105,11 +105,11 @@ Before expensive work:
 
 After an attempt:
 
-- write or update ExecutionReport evidence
+- attach or update exact Attempt evidence
 - run verification
 - record adaptive observation/evaluation/diagnosis/decision/next plan if not
   complete
-- update `resume_brief.md` when the task is long or handoff-prone
+- refresh RecoveryView when the task is long or handoff-prone
 
 Before claiming completion:
 

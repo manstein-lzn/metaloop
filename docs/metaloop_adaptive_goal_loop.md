@@ -34,8 +34,8 @@ MetaLoop Core owns the loop vocabulary and durable state. Domain extensions own 
 ```text
 MetaLoop Core
   -> Goal / Plan / Observation / Evaluation / Diagnosis / Decision / Next Plan
-  -> Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult
-  -> Attempt and event memory
+  -> Task, ContractRevision, Attempt, Evaluation, DecisionEvent
+  -> RecoveryView and thread assignment
 
 Domain Extension
   -> evidence types
@@ -64,9 +64,11 @@ A failed attempt should produce more than `failed`:
 
 Without this discipline, a long-running agent can keep trying variants, forget why they failed, weaken the target, or report artifact production as success.
 
-## Minimal State Shape
+## V1 Compatibility State Shape
 
-The lightweight core state is `.metaloop/adaptive_loop.json`:
+Before V2 initialization, the compatibility state is
+`.metaloop/adaptive_loop.json`. V2 stores the same learning result as an
+immutable DecisionEvent bound to the relevant Task, Attempt, or Evaluation:
 
 ```json
 {
@@ -111,11 +113,15 @@ The generic decision vocabulary is:
 
 This vocabulary is deliberately domain-neutral.
 
-## Relationship To Mission Capsule
+## Relationship To ContractRevision
 
-Mission Capsule remains the task constitution: goal, constraints, non-goals, acceptance, ExtensionSpec, and VerificationSpec.
+ContractRevision is the V2 task constitution: goal, constraints, non-goals,
+acceptance, ExtensionSpec, VerificationSpec, and optional governance. Mission
+Capsule is the V1 compatibility representation and migration input only.
 
-Adaptive Goal Loop is the iterative learning state under that constitution. It does not unlock or weaken the capsule. If diagnosis shows the capsule is wrong, the decision should be `redesign`, followed by an explicit capsule revision.
+Adaptive Goal Loop is the iterative learning state under that constitution. It
+does not unlock or weaken the contract. If diagnosis shows the contract is
+wrong, record `redesign` and lock an explicit ContractRevision.
 
 ## Relationship To VerificationSpec
 
@@ -126,7 +132,7 @@ The two must not collapse into each other:
 - Verification without diagnosis can prove failure but not guide the next attempt.
 - Diagnosis without verification can become storytelling.
 
-## First Implementation
+## Legacy First Implementation
 
 The first implementation is intentionally small:
 
@@ -146,4 +152,4 @@ The abstraction is correct when:
 - no domain rules are hardcoded in core
 - every failed or partial attempt can preserve observation, evaluation, diagnosis, decision, and next plan
 - domain extensions remain responsible for evidence types and validators
-- Mission Capsule and VerificationSpec remain authoritative for scope and completion
+- ContractRevision and its VerificationSpec remain authoritative for scope and completion

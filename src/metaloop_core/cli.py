@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from metaloop_core.adaptive_loop import decide_next as decide_adaptive_next
 from metaloop_core.durable import DurableStore
 from metaloop_core.engineering_governance import build_locked_file, validate_engineering_governance, verify_engineering_governance
 from metaloop_core.schemas import ENGINEERING_CHANGE_TYPES, ENGINEERING_GOVERNANCE_SCHEMA
@@ -845,7 +846,11 @@ def _adaptive_record(workspace: Path, args: argparse.Namespace) -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    decision = args.decision or _decide_next(args.evaluation_status, diagnosis=args.diagnosis, next_plan=args.next_plan)
+    decision = args.decision or decide_adaptive_next(
+        evaluation_status=args.evaluation_status,
+        diagnosis=args.diagnosis,
+        next_plan=args.next_plan,
+    )
     iteration = {
         "schema": ADAPTIVE_ITERATION_SCHEMA,
         "version": "1.0",
@@ -3612,23 +3617,6 @@ def _validate_adaptive_iteration(payload: Any) -> list[str]:
     elif not all(isinstance(item, str) for item in payload.get("evidence", [])):
         errors.append("evidence items must be strings")
     return errors
-
-
-def _decide_next(evaluation_status: str, *, diagnosis: str = "", next_plan: str = "") -> str:
-    text = f"{diagnosis} {next_plan}".lower()
-    if evaluation_status == "satisfied":
-        return "complete"
-    if evaluation_status == "invalid_goal":
-        return "redesign"
-    if evaluation_status == "blocked":
-        return "escalate" if any(term in text for term in ["permission", "resource", "approval", "gpu", "blocked"]) else "stop"
-    if any(term in text for term in ["pivot", "wrong direction", "目标不对", "方向不对"]):
-        return "pivot"
-    if any(term in text for term in ["contract", "acceptance", "验收", "scope", "目标"]):
-        return "redesign"
-    if any(term in text for term in ["bug", "regression", "implementation", "修复", "错误"]):
-        return "repair"
-    return "continue"
 
 
 def _adaptive_status_after_decision(decision: str) -> str:

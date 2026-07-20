@@ -43,8 +43,8 @@ For tiny one-step edits, ordinary Codex remains sufficient.
 - Change a verified artifact before acceptance and confirm rejection.
 - Use Progressive Design on a broad architecture goal and inspect whether the
   selected slice preserves the full direction without creating excess process.
-- Use engineering governance on a suitable v1 task, drift a locked module
-  contract, and confirm execution fails closed.
+- Use optional V2 governance on an architecture-sensitive Task, drift a stable
+  module contract, and confirm start/seal/verify/review/accept fail closed.
 
 ## Feedback
 

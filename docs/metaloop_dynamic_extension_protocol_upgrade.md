@@ -2,6 +2,10 @@
 
 Date: 2026-05-08
 
+Status: legacy V1 design record. V2 preserves ExtensionSpec and VerificationSpec
+as ContractRevision content; Mission Capsule, ExecutionReport, and
+VerificationResult names below describe the pre-V2 implementation only.
+
 ## Goal
 
 Upgrade the self-contained `$metaloop` Codex Skill from a generic VerificationSpec kernel into a lightweight protocol that lets agents design task-specific ExtensionSpec and VerificationSpec during design, while MetaLoop locks, executes, verifies, and audits those specs.

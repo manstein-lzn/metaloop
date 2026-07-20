@@ -1,59 +1,60 @@
 # Engineering Governance Module Contract
 
-Status: active module contract
+Status: active V2.1 module contract
 
-Document type: normative module contract
+Authority: `metaloop_core.engineering_governance`
 
-Authority: `metaloop_core.engineering_governance` and its portable-kernel mirror
-
-Last verified: 2026-07-11
+Last verified: 2026-07-20
 
 ## Responsibility
 
-Own deterministic validation of the small engineering-governance envelope and
-verification of its workspace-local document hashes.
+Own deterministic validation, legacy normalization, live stable-input checks,
+managed-output evidence requirements, and compact summaries for optional V2
+ContractRevision governance.
 
 ## Public API
 
 ```text
-build_locked_file(workspace, ref) -> {ref, sha256}
-validate_engineering_governance(payload) -> list[str]
-verify_engineering_governance(workspace, payload) -> list[str]
+# V2
+build_v2_governance(...)
+validate_v2_governance(payload)
+verify_v2_governance(workspace, payload, evidence_paths, require_managed_outputs)
+summarize_v2_governance(workspace, payload)
+normalize_legacy_governance(payload)
+
+# V1 read/migration compatibility
+build_locked_file(workspace, ref)
+validate_engineering_governance(payload)
+verify_engineering_governance(workspace, payload)
 ```
 
 ## Owned State
 
-No independent state. The module validates the `engineering_governance` value
-stored in the locked Mission Capsule.
+No independent persistence. V2 governance is immutable ContractRevision
+content. V1 governance exists only in a legacy Mission Capsule before migration.
 
-## Allowed Dependencies
+## Dependencies
 
-- Python standard library only.
+- Python standard library.
 - Leaf constants from `metaloop_core.schemas`.
 
-## Forbidden Dependencies
-
-- Verification, routing, relay, activation, thread, or observation modules.
-- Product-specific packages or MissionForge.
-- Agent/model calls or semantic classifiers.
+The module must not depend on durable storage, CLI, verification, routing,
+agents, product-specific packages, or semantic classifiers.
 
 ## Invariants
 
-- Refs are non-empty, workspace-relative, and cannot escape the workspace.
-- Hashes are computed from exact file bytes.
-- Change classification is explicit, never inferred.
-- Redesign requires a migration plan.
+- Every path is safe and workspace-relative.
+- Stable-input hashes are exact file-byte hashes.
+- Managed outputs fall under an allowed path and become exact Attempt evidence.
+- Change classification is explicit and never inferred from prose.
+- Redesign requires a stable migration plan.
 - Validation is deterministic and has no writes.
+- Legacy normalization preserves valid governance without retaining a second
+  active state model.
 
-## Independent Verification
+## Verification
 
-- Unit tests cover valid envelopes, missing fields, path escape, redesign
-  requirements, and content drift.
-- Skill/core parity covers one successful governed task and one drift failure.
-
-## Shipped Reality
-
-The module is implemented without persistence or product dependencies. Capsule
-loading invokes it before execution and verification. Its portable-kernel
-mirror is intentionally limited to the same envelope and is covered by parity
-tests.
+Unit tests cover shape, path escape, drift, scope, redesign, legacy
+normalization, and summaries. Durable integration tests cover contract lock,
+Attempt start/seal, verification, review, acceptance, integrity, RecoveryView,
+and migration. Skill-kernel tests cover V2 CLI construction.

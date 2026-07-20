@@ -2,6 +2,10 @@
 
 日期：2026-05-08
 
+状态：V1 历史设计记录。V2 已将其中的 Mission Capsule / ExecutionReport /
+VerificationResult 映射为 ContractRevision / Attempt / Evaluation；以下旧术语不再是
+新任务入口。
+
 ## 1. 背景
 
 MetaLoop 最初要解决的问题是真实存在的：

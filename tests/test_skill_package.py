@@ -17,6 +17,7 @@ def _hashed_envelope(envelope: dict) -> dict:
 
 def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
+    normalized_skill = " ".join(skill.split())
     openai_yaml = (ROOT / "skills" / "metaloop" / "agents" / "openai.yaml").read_text(encoding="utf-8")
 
     assert "name: metaloop" in skill
@@ -28,23 +29,16 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "Use `scripts/metaloop_kernel.py` for" in skill
     assert "Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints" in skill
     assert "Do not weaken locked acceptance after execution" in skill
-    assert "Replacing a locked capsule requires a revision reason" in skill
+    assert "Replace a defective contract" in skill
     assert "outcome-first" in skill
     assert "stopping conditions" in skill
     assert "bounded inspection" in skill
     assert "Run relevant tests" in skill
     assert "If validation cannot run, say why" in skill
     assert "The user should be able to say only" in skill
-    assert "Do not require the user to ask for Mission Capsules" in skill
+    assert "Do not require the user to name Tasks" in skill
     assert "VerificationSpecs" in skill
-    assert "single_node" in skill
-    assert "multi_thread" in skill
-    assert "routable_work_units" in skill
-    assert "ask only questions that change the target" in skill
-    assert "global_blackboard.json" in skill
-    assert "dispatch_map.json" in skill
-    assert "job_envelope.json" in skill
-    assert "Do not use routable work units just because a task is large" in skill
+    assert "Ask only questions that change the target" in skill
     assert "read-only summaries" in skill
     assert ".metaloop/control/" in skill
     assert "metaloop_dashboard.py" in skill
@@ -56,10 +50,8 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "Verification Gate" in skill
     assert "Control Point" in skill
     assert "Observation Surface" in skill
-    assert "Safe-point discipline" in skill
-    assert "do not make a" in skill
-    assert "dashboard or observer silently route work" in skill
-    assert "must not expose endpoints that write controls" in skill
+    assert "dashboard or observer must not silently route work" in normalized_skill
+    assert "dashboard must not expose mutation routes" in normalized_skill
     assert 'display_name: "MetaLoop"' in openai_yaml
     assert 'default_prompt: "Use $metaloop' in openai_yaml
     assert "Infer the task shape" in openai_yaml
@@ -81,6 +73,25 @@ def test_metaloop_skill_guides_progressive_design_without_new_runtime_concepts()
     assert "Each design response should contribute a new deduction" in skill
     assert "design depth and implementation breadth are independent" in normalized_design
     assert "The concrete architecture, modules, slices, concessions, and evidence belong to" in normalized_design
+
+
+def test_metaloop_skill_has_one_v2_path_and_native_governance() -> None:
+    skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
+    governance = (ROOT / "skills" / "metaloop" / "references" / "v2_governance.md").read_text(encoding="utf-8")
+    normalized_governance = " ".join(governance.split())
+    legacy = (ROOT / "skills" / "metaloop" / "references" / "legacy_v1_compatibility.md").read_text(encoding="utf-8")
+
+    assert "Use the v2 durable work graph for all new work" in skill
+    assert "Mission Capsule is migration input only" in skill
+    assert 'python3 "$KERNEL" --workspace . design' not in skill
+    assert "--change-kind" in skill
+    assert "--stable-input" in skill
+    assert "--managed-output" in skill
+    assert '"stable_inputs"' in governance
+    assert "Stable inputs must exist at contract lock" in normalized_governance
+    assert "Managed outputs must be workspace-relative" in normalized_governance
+    assert "Do not call the v1 `design` command" in governance
+    assert "v1 mutable commands fail closed" in legacy
 
 
 def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:

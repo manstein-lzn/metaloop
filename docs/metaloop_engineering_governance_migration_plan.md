@@ -1,61 +1,50 @@
 # MetaLoop Engineering Governance Migration Plan
 
-Status: active migration plan
+Status: V2.1 cutover implemented
 
-Document type: normative migration plan
+Document type: normative migration record
 
-Authority: governs the vNext cutover for explicit semantic decisions
+Last verified: 2026-07-20
 
-Last verified: 2026-07-11
+## Previous State
 
-Exit condition: core and portable kernel accept only explicit semantic route
-decisions, all tests and docs use the new contract, and no keyword classifier
-remains on the active path
+The first governance slice lived only in the v1 Mission Capsule. At the same
+time, V2 declared ContractRevision canonical for new work. The merged Skill
+therefore instructed architecture Tasks to call a command that V2 correctly
+disabled. The extracted CLI also retained keyword-based semantic inference even
+though the canonical adaptive core had removed it.
 
-## Why This Is a Redesign
+## V2.1 Contract
 
-The engineering-governance envelope is an additive capability, but the same
-slice removes existing keyword-based inference from public decision helpers.
-That changes public API semantics and therefore must be treated as redesign,
-not hidden inside an extension or repair.
+- All new work uses Task and ContractRevision.
+- Progressive Design remains conditional Skill intelligence.
+- Optional governance is ContractRevision content, not a second state model.
+- Stable inputs and managed outputs have different lifecycle semantics.
+- Semantic change and adaptive decisions are explicit agent choices.
+- V1 artifacts are read/migration input only.
 
-## Old Contract
+## Cutover
 
-- `classify_dissatisfaction(feedback)` inferred repair, redesign, resume, or
-  complete from words in free text.
-- `decide_next()` and `diagnose_next()` could infer repair, redesign, or pivot
-  from diagnosis and next-plan prose.
-
-## New Contract
-
-- Intelligent agents choose semantic decisions explicitly.
-- Code validates the declared decision vocabulary.
-- Code may map low-dimensional mechanical states to `complete`, `continue`, or
-  `escalate`; it does not manufacture repair, redesign, or pivot from prose.
-- Engineering changes declare `repair | extension | redesign` explicitly in a
-  locked governance envelope.
-
-## Cutover Steps
-
-1. Add governance envelope validation to core and portable kernel.
-2. Change semantic helper behavior to explicit validation or mechanical-only
-   defaults.
-3. Update every repository caller and test to pass semantic decisions
-   explicitly.
-4. Add negative tests proving keywords do not control routing.
-5. Run core/portable parity, import-boundary, and full-suite tests.
-6. Dogfood the redesign through a new Mission Capsule revision that binds this
-   migration plan.
+1. Add the V2 governance schema and deterministic helper API.
+2. Enforce it through contract lock, Attempt lifecycle, Evaluation, Review,
+   acceptance, selected-task integrity, and RecoveryView.
+3. Normalize valid legacy governance during `project migrate-legacy`.
+4. Remove the duplicate keyword classifier from canonical CLI.
+5. Rewrite the main Skill around one V2 path and move v1 details to a migration
+   reference.
+6. Add cross-feature behavioral tests rather than independent feature-only
+   checks.
+7. Regenerate and replace the complete installed Skill.
 
 ## Compatibility
 
-Existing Mission Capsules without `engineering_governance` remain valid.
-Callers that relied on keyword inference must migrate; no compatibility adapter
-will preserve that unsafe semantic behavior. Invalid free-text input to
-`classify_dissatisfaction` now fails explicitly.
+Existing V2 contracts without governance remain valid. Existing v1 Capsules
+remain readable and migratable. Callers that relied on keyword inference must
+provide explicit semantic decisions; no active compatibility classifier is
+retained.
 
 ## Removal Condition
 
-The old behavior is removed when repository search and tests show no active
-caller relying on keyword inference and the full suite passes. There is no
-parallel legacy classifier after cutover.
+The cutover is complete only when repository search finds no keyword classifier
+on the active path, full tests pass, the vendored core matches canonical source,
+and the installed Skill matches the repository package.

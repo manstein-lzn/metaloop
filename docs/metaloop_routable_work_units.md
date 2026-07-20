@@ -112,11 +112,11 @@ orchestrator or human operator to consume.
 
 This layer is an extension of the current protocol, not a replacement for it.
 
-- Mission Capsule remains the local task contract
-- VerificationSpec remains the completion gate
-- ExecutionReport remains candidate evidence
-- VerificationResult remains the final local verdict
-- AdaptiveLoop remains the learning loop after each attempt
+- ContractRevision remains the local task contract.
+- VerificationSpec remains the completion gate inside that contract.
+- Attempt checkpoints and evidence remain the execution record.
+- Evaluation and Review remain the final local verdict chain.
+- DecisionEvents remain the learning record after each attempt.
 
 ## Non-Goals
 

@@ -13,14 +13,14 @@ MetaLoop should not make an external CLI orchestration loop pretend to be the ma
 ```text
 Codex Skill entry
   -> persistent Codex thread agents
-  -> .metaloop Mission Capsule / VerificationSpec / thread registry
-  -> worker ExecutionReport as candidate evidence
-  -> kernel VerificationResult as independent acceptance
+  -> SQLite Task / ContractRevision / thread assignments
+  -> worker Attempt checkpoints and exact evidence
+  -> kernel Evaluation and independent Review as acceptance chain
 ```
 
 The protocol is intentionally small. It records thread roles and handoff boundaries; it does not schedule background agents by itself.
 
-## Thread Registry
+## V1 Thread Registry Compatibility
 
 The bundled skill kernel records persistent agent threads in:
 
@@ -28,14 +28,14 @@ The bundled skill kernel records persistent agent threads in:
 .metaloop/threads.json
 ```
 
-Register a thread when a Codex thread id is available:
+In a V1-only workspace, register a thread when a Codex thread id is available:
 
 ```bash
 python3 "$KERNEL" --workspace . threads register \
   --role design \
   --role-type design \
   --thread-id "<codex-thread-id>" \
-  --responsibility "Draft Mission Capsule and VerificationSpec before execution."
+  --responsibility "Draft the task contract and VerificationSpec before execution."
 ```
 
 Inspect the registry:
@@ -56,8 +56,8 @@ python3 "$KERNEL" --workspace . threads update \
 ## Canonical Roles
 
 - `interface`: talks with the user and preserves project-level intent.
-- `design`: explores requirements and drafts Mission Capsule plus VerificationSpec.
-- `worker`: executes against the locked capsule without weakening verification.
+- `design`: explores requirements and drafts ContractRevision plus VerificationSpec.
+- `worker`: executes against the locked contract without weakening verification.
 - `reviewer`: checks contract fit and evidence independently from worker self-report.
 - `verifier`: runs locked validators and classifies completion, repair, redesign, or limitation status.
 
@@ -65,20 +65,16 @@ Custom role names are allowed when a project needs them, but responsibilities mu
 
 ## Operational Truth
 
-Thread context is useful but not authoritative. Shared truth must live in `.metaloop/` artifacts:
+Thread context is useful but not authoritative. In V2, shared truth is:
 
-- `mission_capsule.json`
-- locked `extension_spec` and `verification_spec` inside the capsule
-- `execution_report.json`
-- `verification_result.json`
-- `review_result.json` when an independent reviewer resolves
-  `review_required`
-- `threads.json`
-- `event_log.jsonl`
-- `context/resume_brief.md`
-- `context/current_hypothesis.md`
-- `context/failed_attempts.md`
-- attempts, decisions, and revision archives
+- Task and immutable ContractRevision rows;
+- open/sealed Attempt checkpoints and exact evidence;
+- Evaluation and Review acceptance chain;
+- Task- or Project-scoped DecisionEvents;
+- thread assignments and freshness-checked RecoveryView.
+
+The JSON files and Markdown checkpoints described above remain V1 compatibility
+artifacts only.
 
 If a thread learns something important, it should summarize that into the relevant artifact instead of relying on private chat memory.
 

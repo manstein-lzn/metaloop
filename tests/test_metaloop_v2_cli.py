@@ -251,3 +251,55 @@ def test_v1_mutable_surfaces_fail_closed_after_v2_initialization(tmp_path) -> No
     assert assigned.returncode == assignments.returncode == legacy_status.returncode == 0
     assert json.loads(assignments.stdout)["task_id"] == task["task_id"]
     assert json.loads(legacy_status.stdout)[0]["thread_id"] == "thread-v2"
+
+
+def test_v2_contract_cli_builds_governance_without_v1_design(tmp_path) -> None:
+    assert _run(tmp_path, "project", "init").returncode == 0
+    task = json.loads(_run(tmp_path, "task", "create", "--title", "Governed V2").stdout)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "architecture.md").write_text("# Architecture\n", encoding="utf-8")
+    (docs / "module.md").write_text("# Module\n", encoding="utf-8")
+    contract_path = tmp_path / "contract.json"
+    contract_path.write_text(
+        json.dumps(
+            {
+                "goal": "Deliver a governed V2 task.",
+                "verification_spec": {
+                    "validators": [
+                        {"type": "command", "mode": "executable", "severity": "blocking", "command": "true"}
+                    ],
+                    "resource_gates": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    locked = _run(
+        tmp_path,
+        "task",
+        "contract",
+        "--task",
+        task["task_id"],
+        "--expected-version",
+        str(task["state_version"]),
+        "--file",
+        str(contract_path),
+        "--change-kind",
+        "repair",
+        "--stable-input",
+        "governing_document=docs/architecture.md",
+        "--stable-input",
+        "module_contract=docs/module.md",
+        "--managed-output",
+        "implementation=src/result.txt",
+        "--allowed-path",
+        "src",
+    )
+
+    assert locked.returncode == 0, locked.stdout + locked.stderr
+    governance = json.loads(locked.stdout)["content"]["governance"]
+    assert governance["change_kind"] == "repair"
+    assert governance["stable_inputs"][0]["sha256"].startswith("sha256:")
+    assert governance["managed_outputs"] == [{"path": "src/result.txt", "role": "implementation"}]
