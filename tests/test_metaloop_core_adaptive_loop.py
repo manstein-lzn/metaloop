@@ -41,6 +41,7 @@ def test_append_iteration_records_observe_evaluate_diagnose_decide_next_plan() -
         evaluation_status="not_satisfied",
         diagnosis="The likely issue is an implementation bug in the candidate change.",
         next_plan="Repair the implementation bug, rerun the same metric gate, and compare against baseline.",
+        decision="repair",
         evidence=[".metaloop/verification_result.json"],
     )
 
@@ -64,6 +65,7 @@ def test_record_iteration_persists_loop_and_workspace_state(tmp_path) -> None:
         evaluation_status="partial",
         diagnosis="The contract is too narrow for the actual user workflow.",
         next_plan="Redesign acceptance criteria to include the edge case before more implementation.",
+        decision="redesign",
     )
 
     loaded = load_adaptive_loop(tmp_path)
@@ -79,8 +81,14 @@ def test_decide_next_uses_general_problem_solving_vocabulary() -> None:
     assert decide_next(evaluation_status="satisfied") == "complete"
     assert decide_next(evaluation_status="invalid_goal", diagnosis="Acceptance is wrong") == "redesign"
     assert decide_next(evaluation_status="blocked", diagnosis="GPU resource requires approval") == "escalate"
-    assert decide_next(evaluation_status="not_satisfied", diagnosis="wrong direction, pivot away") == "pivot"
+    assert decide_next(evaluation_status="not_satisfied", diagnosis="wrong direction, pivot away") == "continue"
     assert decide_next(evaluation_status="partial", diagnosis="Need another high-signal attempt") == "continue"
+
+
+def test_decide_next_does_not_infer_semantic_route_from_keywords() -> None:
+    assert decide_next(evaluation_status="partial", diagnosis="implementation bug requires repair") == "continue"
+    assert decide_next(evaluation_status="partial", diagnosis="scope is wrong and needs redesign") == "continue"
+    assert decide_next(evaluation_status="partial", next_plan="pivot to another architecture") == "continue"
 
 
 def test_adaptive_loop_validation_rejects_missing_diagnosis() -> None:

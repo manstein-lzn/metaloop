@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 CAPSULE_SCHEMA = "metaloop.lightweight_capsule"
+ENGINEERING_GOVERNANCE_SCHEMA = "metaloop.engineering_governance"
 ADAPTIVE_LOOP_SCHEMA = "metaloop.adaptive_goal_loop"
 ADAPTIVE_ITERATION_SCHEMA = "metaloop.adaptive_goal_iteration"
 OBSERVATION_REPORT_SCHEMA = "metaloop.observation_report"
@@ -25,6 +26,7 @@ ACTIVATION_LEASE_SCHEMA = "metaloop.activation_lease"
 CONTEXT_SUMMARY_SCHEMA = "metaloop.context_summary"
 
 CAPSULE_STATUSES = {"designed", "running", "executed", "repair_required", "redesign_required", "blocked", "completed"}
+ENGINEERING_CHANGE_TYPES = {"repair", "extension", "redesign"}
 THREAD_STATUSES = {"active", "paused", "closed", "handoff_required"}
 CANONICAL_THREAD_TYPES = {"interface", "design", "worker", "reviewer", "verifier"}
 EVENT_TYPES = {"observation", "decision", "action", "blocker", "handoff", "verification", "repair", "redesign", "note"}

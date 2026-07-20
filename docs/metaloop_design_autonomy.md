@@ -1,6 +1,6 @@
 # MetaLoop Design Autonomy
 
-Date: 2026-05-12
+Date: 2026-07-12
 
 V2 design first resolves an explicit Task, then locks an immutable
 ContractRevision. Several independent goals in one workspace receive separate
@@ -46,6 +46,33 @@ implementation. It should:
 Do not ask the user whether to use "Mission Capsule", "VerificationSpec",
 "blackboard", "job envelope", "tick", or "relay". Those are MetaLoop internal
 mechanisms. Explain the plan in ordinary project terms.
+
+## Progressive Design
+
+For architecture and long-horizon work, design depth and implementation breadth
+are independent. Codex may develop a coherent long-term model while locking only
+the smallest end-to-end slice that can test its current assumptions.
+
+Codex should:
+
+- expand the user's vision into a target model and identify missing dimensions,
+  risks, and choices;
+- separate durable invariants from current implementation scope;
+- assign cohesive module ownership and explicit interfaces so later slices can
+  grow independently;
+- record deliberate concessions together with their scope and revisit evidence;
+- prefer an established project-native path for the first representative
+  walking skeleton;
+- use verification evidence from each slice to choose the next increment.
+
+The concrete architecture, modules, slices, concessions, and evidence belong to
+the current project. MetaLoop supplies the reasoning discipline; Codex adapts it
+to the project's actual constraints and writes the result into project-owned
+documents and verification artifacts.
+
+Design dialogue should remain generative. Each response contributes a new
+deduction, missing dimension, risk, choice, or clearer structure. Established
+context is summarized when doing so produces a more useful shared model.
 
 ## Task Shape Classifier
 

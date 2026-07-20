@@ -33,6 +33,7 @@ Use code / kernel / validators for:
 - event log and thread registry
 - deterministic validation
 - audit and resume
+- locking and rechecking governing-document and module-contract refs/hashes
 
 Prefer examples before framework code. For domain behavior, write playbooks and VerificationSpec examples first. Promote behavior into code only when it must be machine-checked, routed, recovered, or shared across agents as durable state.
 
@@ -59,3 +60,9 @@ records that the judgment occurred; Task lifecycle changes only through the
 transactional service layer. Rich reasoning still does not belong in schema.
 
 This preserves intelligence without losing auditability.
+
+For engineering work, code validates only the explicitly declared
+`repair | extension | redesign` value. It must not inspect diagnosis prose or
+keywords to manufacture that semantic decision. Architecture content remains in
+the project's governing documents; MetaLoop stores refs, hashes, scope, and the
+migration-plan binding required for redesign.

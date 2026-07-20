@@ -8,7 +8,7 @@ from typing import Any
 from metaloop_core.adaptive_loop import decide_next
 from metaloop_core.execution import load_execution_report
 from metaloop_core.ids import new_id, utc_now
-from metaloop_core.schemas import DIAGNOSIS_REPORT_SCHEMA, OBSERVATION_REPORT_SCHEMA
+from metaloop_core.schemas import ADAPTIVE_DECISIONS, DIAGNOSIS_REPORT_SCHEMA, OBSERVATION_REPORT_SCHEMA
 from metaloop_core.verification import load_verification_summary
 
 
@@ -118,7 +118,7 @@ def observe_workspace(workspace: str | Path = ".", *, write: bool = False) -> di
     return report
 
 
-def diagnose_next(observation: dict[str, Any], *, next_plan: str = "") -> dict[str, Any]:
+def diagnose_next(observation: dict[str, Any], *, next_plan: str = "", decision: str = "") -> dict[str, Any]:
     """Create a domain-neutral diagnosis and control decision from observation."""
 
     status = str(observation.get("status") or "unknown")
@@ -166,12 +166,14 @@ def diagnose_next(observation: dict[str, Any], *, next_plan: str = "") -> dict[s
         default_decision = decide_next(evaluation_status=evaluation_status, diagnosis=diagnosis, next_plan=default_next_plan)
 
     plan = next_plan.strip() or default_next_plan
-    decision = decide_next(evaluation_status=evaluation_status, diagnosis=diagnosis, next_plan=plan) if next_plan.strip() else default_decision
+    resolved_decision = decision.strip() or default_decision
+    if resolved_decision not in ADAPTIVE_DECISIONS:
+        raise ValueError(f"decision must be one of {sorted(ADAPTIVE_DECISIONS)}")
     return DiagnosisReport(
         diagnosis_id=new_id("diagnosis"),
         evaluation_status=evaluation_status,
         diagnosis=diagnosis,
-        decision=decision,
+        decision=resolved_decision,
         next_plan=plan,
         evidence=[str(item) for item in evidence if isinstance(item, str)],
     ).to_dict()

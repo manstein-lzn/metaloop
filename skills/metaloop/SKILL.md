@@ -128,6 +128,36 @@ Lock the corresponding v2 ContractRevision with the bundled kernel before
 implementation when the task is substantial or verification matters. Use the
 Mission Capsule and VerificationSpec only in a v1-only workspace.
 
+## Progressive Design Rule
+
+For architecture and long-horizon work, Codex turns the user's vision into a
+design that can grow through evidence:
+
+- derive a coherent target model and surface missing dimensions, risks, and
+  choices;
+- identify the durable invariants that later slices must preserve;
+- select the smallest end-to-end slice that tests the current assumptions;
+- define cohesive module ownership and explicit interfaces for independent
+  expansion;
+- record deliberate concessions, their scope, and the evidence that should
+  trigger revisiting them;
+- use an established project-native path as the first walking skeleton when it
+  provides representative evidence;
+- advance only when evidence from the current slice justifies the next one.
+
+Each design response should contribute a new deduction, missing dimension,
+risk, choice, or clearer structure. Summarize established context only when it
+creates a more useful shared model.
+
+For architecture, behavior, public-contract, or cross-module engineering work,
+also identify one governing project document and the affected module contracts.
+Classify the change explicitly as `repair`, `extension`, or `redesign`; never
+infer that semantic choice from keywords. Lock their workspace-relative refs and
+hashes with `--governing-document`, repeatable `--module-contract`, and the
+intended `--allowed-path` scope. A `redesign` also requires a locked
+`--migration-plan`. Project docs remain architecture truth; the Mission Capsule
+stores only the locked envelope.
+
 ## Protocol Shape
 
 Use the smallest shape that preserves correctness and recovery:
@@ -196,6 +226,17 @@ python3 "$KERNEL" --workspace . context write --file resume_brief.md --content "
 python3 "$KERNEL" --workspace . tick --envelope job_envelope.json
 python3 "$KERNEL" --workspace . relay --dispatch-map dispatch_map.json
 python3 "$KERNEL" --workspace . activate --root . --worker-command "<explicit command>"
+```
+
+Engineering design example:
+
+```bash
+python3 "$KERNEL" --workspace . design \
+  --change-type extension \
+  --governing-document docs/feature_spec.md \
+  --module-contract docs/module_contract.md \
+  --allowed-path src/feature \
+  ...
 ```
 
 Intent alone is not enough to lock a capsule. Include rationale, non-goals,
@@ -351,6 +392,9 @@ decision, and next plan before another attempt.
   previous capsule.
 - V1 root artifacts are never writable alongside a v2 database except for
   explicit external control intent files.
+- Governing documents and module contracts must still match their locked hashes
+  before execution and verification; drift requires an explicit capsule
+  revision rather than silent continuation.
 - Do not build a parallel state system outside `.metaloop/`.
 - Do not store project-specific tasks, datasets, metrics, or business rules in
   this skill or in MetaLoop core.

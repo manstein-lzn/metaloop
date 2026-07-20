@@ -1,6 +1,17 @@
-# Codex Install Prompt For MetaLoop Skill
+# Install MetaLoop Codex Skill
 
-Copy the following prompt into Codex on the target machine.
+MetaLoop 以 self-contained Codex Skill 交付。目标机器只需要安装仓库中的
+`skills/metaloop/`，无需安装完整 Python package。
+
+当前 GitHub 仓库：
+
+```text
+git@github.com:manstein-lzn/metaloop.git
+```
+
+## 交给 Codex 安装
+
+将下面的请求发送给目标机器上的 Codex：
 
 ````text
 Install the MetaLoop Codex Skill from GitHub and validate it.
@@ -9,26 +20,20 @@ Repository:
 git@github.com:manstein-lzn/metaloop.git
 
 Requirements:
-1. Do not install the full Python package unless validation requires it.
-2. Install only the self-contained skill package from `skills/metaloop`.
-3. Use `${CODEX_HOME:-$HOME/.codex}/skills/metaloop` as the destination.
-4. If a previous MetaLoop skill exists, replace only that skill directory.
-5. Do not modify the current project repository except for temporary smoke-test
-   files under `/tmp`.
-6. After copying, verify that:
-   - `SKILL.md` exists.
-   - `scripts/metaloop_kernel.py` exists.
-   - `extensions/generic/profile.json` exists.
-   - `lib/metaloop_core/durable.py` exists.
-   - the kernel can run `status`.
-   - a v2 smoke test can initialize a Project, create a Task, and produce a
-     fresh RecoveryView.
-   - the installed directory recursively matches `skills/metaloop` after
-     excluding `__pycache__` and `*.pyc`.
-7. If permissions or SSH access fail, stop and print the exact command I should
-   run manually.
+1. Install only the self-contained skill package from `skills/metaloop`.
+2. Use `${CODEX_HOME:-$HOME/.codex}/skills/metaloop` as the destination.
+3. Replace only an existing MetaLoop skill directory.
+4. Keep project repositories unchanged and use `/tmp` for smoke-test files.
+5. Verify `SKILL.md`, `scripts/metaloop_kernel.py`,
+   `extensions/generic/profile.json`, and `lib/metaloop_core/durable.py`.
+6. Run `status`, a v1 `design -> run -> verify` smoke test, and a v2 smoke test
+   that initializes a Project, creates a Task, and produces a fresh RecoveryView.
+7. Confirm the installed directory recursively matches `skills/metaloop` after
+   excluding `__pycache__` and `*.pyc`.
+8. If permissions or SSH access fail, stop and print the exact manual command.
+````
 
-Suggested commands:
+## 手动安装与验证
 
 ```bash
 set -euo pipefail
@@ -49,32 +54,46 @@ test -f "$DEST/extensions/generic/profile.json"
 test -f "$DEST/lib/metaloop_core/durable.py"
 
 python3 "$DEST/scripts/metaloop_kernel.py" --workspace /tmp status
+```
 
-SMOKE="$(mktemp -d /tmp/metaloop-skill-smoke.XXXXXX)"
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" project init
-TASK_JSON="$(python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" task create --title "Validate installed MetaLoop v2")"
+V1 compatibility smoke test:
+
+```bash
+V1_SMOKE="$(mktemp -d /tmp/metaloop-v1-smoke.XXXXXX)"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V1_SMOKE" design \
+  --intent "Validate installed MetaLoop skill" \
+  --rationale "A file proves the lightweight verification flow." \
+  --non-goal "Keep project repositories unchanged." \
+  --file-exists result.txt
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V1_SMOKE" run \
+  --command "printf 'ok\n' > result.txt"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V1_SMOKE" verify --json
+```
+
+成功结果包含 `"status": "completed_verified"`。
+
+V2 smoke test:
+
+```bash
+V2_SMOKE="$(mktemp -d /tmp/metaloop-v2-smoke.XXXXXX)"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V2_SMOKE" project init
+TASK_JSON="$(python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V2_SMOKE" task create --title "Validate installed MetaLoop v2")"
 TASK_ID="$(printf '%s' "$TASK_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])')"
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" recover write --task "$TASK_ID"
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" project integrity
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V2_SMOKE" recover write --task "$TASK_ID"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$V2_SMOKE" project integrity
 
 diff -qr \
   --exclude='__pycache__' --exclude='*.pyc' \
   "$WORKDIR/metaloop/skills/metaloop" "$DEST"
-````
-
-Report:
-- installed path
-- v2 Project integrity and Recovery freshness
-- whether I need to restart Codex for `$metaloop` to appear
 ```
 
-## After Installation
+报告 installed path、v1 verification status、v2 integrity/Recovery freshness，以及是否需要
+重启 Codex 才能看到 `$metaloop`。
 
-Start a new Codex session if the current one does not list `$metaloop`.
+## 使用
 
-Try this in any project:
+如果当前 session 尚未列出 `$metaloop`，启动一个新 session，然后表达目标：
 
 ```text
-Use $metaloop for this repository. Inspect the project, create or select the
-right Task, lock its success contract, and keep the open Attempt recoverable.
+Use $metaloop. 我想完成 <你的目标>。
 ```

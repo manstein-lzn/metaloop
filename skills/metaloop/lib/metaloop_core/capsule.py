@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from metaloop_core.engineering_governance import validate_engineering_governance, verify_engineering_governance
 from metaloop_core.ids import utc_now
 from metaloop_core.schemas import CAPSULE_SCHEMA, CAPSULE_STATUSES
 from metaloop_core.specs import validate_extension_spec, validate_verification_spec
@@ -59,12 +60,15 @@ def validate_capsule(payload: Any) -> list[str]:
         errors.extend(validate_verification_spec(verification_spec, extension_spec=extension_spec))
     if not isinstance(payload.get("verification_review"), dict):
         errors.append("verification_review must be an object")
+    errors.extend(validate_engineering_governance(payload.get("engineering_governance")))
     return errors
 
 
 def load_valid_capsule(workspace: str | Path = ".") -> tuple[dict[str, Any] | None, list[str]]:
     capsule = load_capsule(workspace)
     errors = validate_capsule(capsule)
+    if not errors and capsule is not None:
+        errors.extend(verify_engineering_governance(workspace, capsule.get("engineering_governance")))
     if errors:
         return None, errors
     return capsule, []

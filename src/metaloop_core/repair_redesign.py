@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 
-def classify_dissatisfaction(feedback: str) -> str:
-    """Conservative first-pass repair/redesign classifier.
+def classify_dissatisfaction(decision: str) -> str:
+    """Validate an explicit repair/redesign decision without inferring semantics."""
 
-    This helper is intentionally simple. It should not replace user/reviewer
-    judgment; it gives wrappers a stable vocabulary for routing feedback.
-    """
-
-    text = feedback.lower()
-    if any(term in text for term in ["scope", "验收", "acceptance", "wrong goal", "目标不对", "重设计", "redesign"]):
-        return "redesign"
-    if any(term in text for term in ["继续", "resume", "incomplete", "没做完"]):
-        return "resume"
-    if any(term in text for term in ["完成", "complete", "满意", "ok"]):
-        return "complete"
-    return "repair"
+    normalized = decision.strip().lower()
+    if normalized not in {"repair", "redesign", "resume", "complete"}:
+        raise ValueError("decision must be explicit: repair, redesign, resume, or complete")
+    return normalized

@@ -66,6 +66,23 @@ def test_metaloop_skill_declares_entry_and_enforcement_boundary() -> None:
     assert "ask only blocking questions" in openai_yaml
 
 
+def test_metaloop_skill_guides_progressive_design_without_new_runtime_concepts() -> None:
+    skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
+    design = (ROOT / "docs" / "metaloop_design_autonomy.md").read_text(encoding="utf-8")
+    normalized_design = " ".join(design.split())
+
+    assert "Progressive Design Rule" in skill
+    assert "coherent target model" in skill
+    assert "durable invariants" in skill
+    assert "smallest end-to-end slice" in skill
+    assert "cohesive module ownership" in skill
+    assert "deliberate concessions" in skill
+    assert "project-native path" in skill
+    assert "Each design response should contribute a new deduction" in skill
+    assert "design depth and implementation breadth are independent" in normalized_design
+    assert "The concrete architecture, modules, slices, concessions, and evidence belong to" in normalized_design
+
+
 def test_metaloop_skill_reference_captures_lightweight_protocol() -> None:
     reference = (ROOT / "skills" / "metaloop" / "references" / "lightweight_protocol.md").read_text(encoding="utf-8")
 
@@ -130,6 +147,26 @@ def test_prompt_first_code_backed_reference_is_packaged_and_linked() -> None:
     assert "single_node" in design
     assert "routable_work_units" in design
     assert "Outcome-First Skill Surface" in (ROOT / "docs" / "metaloop_prompt_first_code_backed.md").read_text(encoding="utf-8")
+
+
+def test_public_docs_match_progressive_design_product_and_install_source() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    state = (ROOT / "STATE.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    handoff = (ROOT / "HANDOFF.md").read_text(encoding="utf-8")
+    install = (ROOT / "docs" / "codex_install_metaloop_skill.md").read_text(encoding="utf-8")
+
+    assert "MetaLoop 是 Codex 的轻量开发治理协议" in readme
+    assert all(item in readme for item in ["深度设计", "渐进推进", "证据验证", "反馈恢复"])
+    assert "Prompt-first / code-backed" in readme
+    assert "最后更新：2026-07-20" in state
+    assert "Progressive Design" in state
+    assert "最后更新：2026-07-20" in roadmap
+    assert "真实项目验证" in roadmap
+    assert "Progressive Design" in handoff
+    assert "git@github.com:manstein-lzn/metaloop.git" in install
+    assert "Use $metaloop. 我想完成 <你的目标>。" in install
+    assert "git@gitlab.cwise.dev" not in install
 
 
 def test_multi_thread_protocol_doc_is_linked_and_boundary_focused() -> None:
@@ -746,6 +783,8 @@ def test_bundled_skill_kernel_records_adaptive_goal_loop(tmp_path) -> None:
             "The implementation likely contains a bug in the attempted change.",
             "--next-plan",
             "Repair the implementation bug and rerun the same gate.",
+            "--decision",
+            "repair",
             "--evidence",
             ".metaloop/verification_result.json",
         ],
@@ -1493,6 +1532,52 @@ def test_bundled_skill_kernel_sanitizes_revision_archive_filename(tmp_path) -> N
     assert ".." not in revisions[0].name
     assert "escape_capsule" in revisions[0].name
     assert not (tmp_path / ".metaloop" / "escape").exists()
+
+
+def test_bundled_skill_kernel_engineering_governance_blocks_document_drift(tmp_path) -> None:
+    kernel = ROOT / "skills" / "metaloop" / "scripts" / "metaloop_kernel.py"
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    (docs / "module.md").write_text("# Module\n", encoding="utf-8")
+    design = subprocess.run(
+        [
+            sys.executable,
+            str(kernel),
+            "--workspace",
+            str(tmp_path),
+            "design",
+            "--intent",
+            "Implement one governed slice.",
+            "--rationale",
+            "Keep the project contract stable during execution.",
+            "--non-goal",
+            "Do not infer architecture decisions.",
+            "--file-exists",
+            "result.txt",
+            "--change-type",
+            "extension",
+            "--governing-document",
+            "docs/spec.md",
+            "--module-contract",
+            "docs/module.md",
+            "--allowed-path",
+            "src/example",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert design.returncode == 0, design.stderr
+    (docs / "spec.md").write_text("# Drifted\n", encoding="utf-8")
+    run = subprocess.run(
+        [sys.executable, str(kernel), "--workspace", str(tmp_path), "run", "--command", "printf ok > result.txt"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 1
+    assert "governance ref hash drifted: docs/spec.md" in run.stderr
 
 
 def _test_hash(payload: dict, hash_key: str) -> str:
