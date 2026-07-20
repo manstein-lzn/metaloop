@@ -1,5 +1,11 @@
 # MetaLoop Multi-Thread Agent Protocol
 
+V2 assigns each persistent thread a default Task and focus stack in canonical
+state. This assignment is navigation, not authority: mutating commands still
+resolve an explicit Task/Attempt/Evaluation subject, and stale Task versions
+fail through compare-and-swap. Two threads may work on different Tasks; one
+Task still permits only one open Attempt.
+
 MetaLoop should not make an external CLI orchestration loop pretend to be the main intelligence layer. Codex agents keep long-lived reasoning context; MetaLoop records task truth and verification state.
 
 ## Shape

@@ -2,6 +2,17 @@
 
 Date: 2026-05-12
 
+## V2 Update
+
+For v2 Tasks, `.metaloop/metaloop.db` stores the canonical Task head, open
+Attempt checkpoints, Evaluation chain, DecisionEvent cursors, and Recovery
+Head. The human-readable resume projection is freshness-checked against those
+sources and exported under `.metaloop/v2/tasks/<task_id>/resume.md`.
+
+The root `.metaloop/context/*.md` files below remain the v1 compatibility
+surface. They are never canonical and should not be used in place of
+`recover show` when a v2 Task exists.
+
 Long-running Codex work must survive context growth, thread reset, and handoff
 without turning MetaLoop into a memory system. Context checkpoints are small
 Markdown summaries under `.metaloop/context/` that make the next Codex agent
@@ -12,8 +23,8 @@ productive quickly.
 ```text
 Codex keeps rich working context.
 MetaLoop keeps compact recovery context.
-Mission Capsule remains task truth.
-VerificationSpec remains completion truth.
+In v1 only, Mission Capsule remains task truth.
+In v1 only, VerificationSpec remains completion truth.
 ```
 
 The checkpoint files are not a transcript and not a second blackboard. They are

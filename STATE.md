@@ -1,100 +1,66 @@
 # MetaLoop 当前状态
 
-最后更新：2026-05-12
+最后更新：2026-07-20
 
 ## 一句话状态
 
-MetaLoop 已收敛为 **Skill-only / skill-only** 产品：团队通过 Codex `$metaloop` skill 使用它；仓库只保留自包含 skill package、`metaloop_core` 协议库、当前文档和测试。旧的仓库级交互运行时、聊天界面、外部 agent 编排器、Node bridge、prompt pack 和相关测试已经移除。
+MetaLoop v2 已实现为 **Skill-only / SQLite-backed Durable Work Graph**。
+新任务使用 `.metaloop/metaloop.db`；旧 v1 artifact 流程只在 v2 初始化前兼容，
+并可通过重新验证后原子迁移。
 
-当前补充原则：用户不需要理解 MetaLoop 内部协议。用户给目标、约束和验收判断；Codex 通过 `$metaloop` skill 主动完成 design、VerificationSpec、Adaptive Loop、必要的多节点拆分和后续 run/verify/repair/redesign 流程。
+## 已实现
 
-当前主路径：
+- Project、Task、parent/dependency DAG 和显式 execution scope。
+- immutable ContractRevision，mutable lifecycle 已移出合同。
+- open/sealed/aborted Attempt、append-only action/checkpoint/evidence。
+- Task `state_version` compare-and-swap 和单 open Attempt 唯一约束。
+- Attempt fingerprint、`retry_of_attempt_id` 和 `retry_reason`。
+- content-bound automated Evaluation、independent Review 和 user authority chain。
+- 唯一 `acceptance_head_ref` 和 fail-closed completion resolver。
+- verified artifact binding，文件变化会使旧 Evaluation 无法完成 Task。
+- Attempt evidence 在 seal/verify/accept 三处重验；默认 Task 的 evidence drift
+  会使 integrity 失败。
+- 混合 reviewer/user 手工 gates 会持久化全部 required authorities，缺一不可。
+- task/project scoped DecisionEvent 和单调 event sequence。
+- DecisionEvent 主体隔离、查询/导出和 supersession-resolved current decisions。
+- bounded RecoveryView，机械分类 `fresh | stale | incomplete`，并绑定依赖 heads、
+  acceptance chain 与 current project/task decisions。
+- thread Task assignment/focus stack，default Task 仅用于导航。
+- repair Task 的 `spawned_by_event_id`、可移除 dependency 和 thread assignment 查询。
+- legacy import 先重新验证 v1 内容和 validators，再以单事务导入；不可信批准为
+  `legacy_unbound`。
+- v2 workspace 禁止 v1 mutable writes；`event append` 显式路由到 v2 Task。
+- `ready_to_accept` 明确阻止通过后再次启动重复 Attempt。
+- rebuildable `.metaloop/v2/` JSON/Markdown projections。
+- v2-aware status、observe 和只读 dashboard。
+- v1 ReviewResult 绑定 ExecutionReport identity/hash，旧 review 不再跨执行复用。
+- canonical `src/metaloop_core` 生成到 Skill，portable kernel 已变为薄启动器。
 
-```text
-Codex agent conversation
-  -> $metaloop skill entry
-  -> bundled kernel writes .metaloop artifacts
-  -> Codex executes with project intelligence
-  -> locked validators verify evidence
-  -> repair / redesign / resume / complete decision
-  -> optional tick / outbox / relay for explicit routable handoff
-```
+## 产品边界
 
-## 核心判断
+- Codex 负责理解、设计、编码、运行、诊断和策略。
+- MetaLoop 负责身份、合同、证据链、恢复、验证和审计。
+- SQLite 负责事务真相，不负责 agent 调度。
+- 不保存聊天 transcript，不引入向量库、daemon、watcher 或 agent pool。
+- 不承诺完全识别语义重复；内核只硬检测精确 replay。
+- 不增加 deadline、priority、看板等项目管理产品面。
 
-- MetaLoop 的核心不是自己变成 agent runtime，而是稳定复杂任务的 design、verification、feedback 和 audit。
-- MetaLoop 已收敛为六个关键控制点：Design Gate、State Checkpoint、Verification Gate、Adaptive Loop、Control Point、Observation Surface。
-- Prompt-first / code-backed：prompt 和 skill 负责智能，代码和 `.metaloop/` artifacts 负责真相。
-- Design 必须先于执行；Mission Capsule 和 VerificationSpec 是执行合同。
-- Agent 可以设计验证方案，但不能在执行后临时改验证来迁就结果。
-- Domain extension 提供领域验证语言，MetaLoop Core 不塞满领域规则。
-- 多个 Codex thread 可以围绕同一目标协作，但共享真相必须写入 `.metaloop/`，不能只靠聊天记忆。
-- 对超出单个可靠工作单元的复杂任务，MetaLoop 支持可路由工作单元，但仍保持 one-shot 文件操作，不引入后台调度器。
-- 用户必须能随时观察和干预；观察是只读 summary，控制是显式 `.metaloop/control/*.json` 意图文件，不让 dashboard 或 observer 变成第二套调度器。
+## 当前试用重点
 
-## 保留的代码面
+1. 上下文压缩发生在 open Attempt 中时，RecoveryView 是否足够恢复。
+2. 同一 project 多 Task 切换是否保持低心智负担。
+3. fingerprint 是否误报或漏掉用户实际关心的重复工作。
+4. DecisionEvent 和 resume projection 的信息密度是否合适。
+5. SQLite writer conflict 和显式 Task scope 是否符合真实 multi-thread 使用。
 
-- `skills/metaloop/`：可一键部署的 Codex Skill，内含 portable kernel、generic extension、参考文档和 metadata。
-- `src/metaloop_core/`：可复用协议库，提供 Mission Capsule I/O、ExecutionReport I/O、VerificationSpec 校验、generic validators、`verify_workspace()`、thread registry、event log、adaptive loop、ObservationReport / DiagnosisReport、repair/redesign vocabulary、routable work unit routing、tick 和 relay。
-- `src/metaloop_core/observe.py` / `control.py`：只读 node/global summaries 和显式 control request 文件。
-- `tools/check_core_import_boundary.py`：确保 core 不重新依赖已移除的外部产品面。
-- `tests/`：只保留 core、skill package、core/skill parity 和 verification 测试。
-
-## 已移除的产品面
-
-- 仓库级交互命令入口。
-- Rich / prompt-toolkit 交互界面。
-- 旧 Python/Node 对话桥接实验代码。
-- 旧 role pipeline、mission file runtime、storage/runtime/prompt pack 实现。
-- 示例 mission、无关 VSCode extension、旧研究/backlog 文档和对应测试。
-
-这次删除是产品决策，不是临时隐藏：用户只需要通过 skill 完成任务，Codex 本身负责自然对话和项目理解。
-
-## 当前能力
-
-- `skills/metaloop/scripts/metaloop_kernel.py` 支持 `status`、`design`、`run`、`verify`、`review`、`mark`、`threads`、`event`、`adaptive`、`tick`、`relay`。
-- Mission Capsule 内锁定 ExtensionSpec 和 VerificationSpec，并记录 hash。
-- bundled generic extension 支持 `file_exists`、`command`、`forbidden_path`、`json_metric_gate`、`json_field_exists`、`file_contains`、`artifact_hash`、`forbidden_claim`、`manual_acceptance`、`resource_gate`。
-- 验证阶段会检查 capsule/report/spec schema、hash、manual blocker、unsupported blocker 和 hard validator 结果。
-- `review_required` 可由独立 Codex reviewer 写入 `.metaloop/review_result.json`
-  后解除；`human_acceptance_required` 只表示用户显式保留的专属授权。
-- `.metaloop/threads.json` 可记录 persistent Codex thread 的 role、thread_id、职责和 handoff 状态。
-- `.metaloop/event_log.jsonl` 可记录长任务观察、决策、阻塞、handoff、验证、repair 和 redesign。
-- `.metaloop/adaptive_loop.json` 支持通用目标逼近闭环：Goal -> Plan -> Act -> Observe -> Evaluate -> Diagnose -> Decide -> Next Plan。
-- `.metaloop/context/*.md` 支持长任务上下文压缩：`resume_brief.md`、`current_hypothesis.md`、`failed_attempts.md`、`project_brief.md`。
-- `job_envelope.json`、`global_blackboard.json`、`dispatch_map.json`、`.metaloop/outbox/*.json`、`.metaloop/tick_result.json` 和 `.metaloop/relay_result.json` 支持显式、可审计、非后台的跨工作单元交接。
-- `observe_node()` / `observe_root()` 提供不写文件的可观测 summary。
-- bundled kernel 支持 `observe --format brief`，用于最小 dashboard/仪表盘式状态视图。
-- `scripts/metaloop_dashboard.py` 提供本地只读 Web dashboard，默认绑定 localhost，只读取 brief summary，不提供 mutation endpoint。
-- `write_control_request()` 写入 `.metaloop/control/*.json` 并追加事件日志；它只表达用户意图，不直接改 capsule、杀进程或调度 worker。
-- `plan_activation()` / `activate_once()` 提供一次性 activation 扫描：检查 envelope、control 和 lease，在调用者显式给出 worker command 时启动 bounded worker，并记录 `activation_result.json`。
-
-## 当前测试目标
+## 验证命令
 
 ```bash
+python3 tools/sync_skill_core.py
+python3 tools/check_skill_core_sync.py
 python3 tools/check_core_import_boundary.py
 .venv/bin/pytest -q
 git diff --check
 ```
 
-当前成功标准：仓库安装不暴露用户命令入口，测试只覆盖 skill/core 产品面，文档不再引导团队使用旧交互面。
-
-## 下一步
-
-1. 继续打磨 `$metaloop` skill 的主动 design 指南，让 agent 自动选择单节点、多 thread 或 routable work units，而不是要求用户指定 MetaLoop 内部机制。
-2. 增加少量高质量 domain extension examples，但不要把领域规则写死进 core。
-3. 加强 adaptive loop 的失败诊断和下一轮计划模板，保持 prompt-first，不急于代码化复杂策略。
-4. 观察 context checkpoint 在真实长任务中的使用质量，避免它膨胀成 transcript。
-5. 建立团队内测反馈机制：记录哪些任务需要更强 hooks、sandbox 或 wrapper runtime，再决定是否新增外层约束。
-
-## 不要做
-
-- 不要重建独立聊天界面。
-- 不要恢复旧外部运行时或多 agent 编排器。
-- 不要把 Codex 自述完成当作 verified completion。
-- 不要把完整聊天史当 operational memory。
-- 不要把 context checkpoint 写成完整聊天记录；它只保存恢复任务所需的压缩事实。
-- 不要为每个有用推理模式新增 Python 模块。
-- 不要在没有真实需求前添加重型 scheduler、agent pool 或领域专用框架。
-- 不要把任何具体项目、数据集、指标或业务逻辑写进 MetaLoop core 或 skill；这些只应出现在目标项目自己的 ExtensionSpec、VerificationSpec、capsule、blackboard 或模板里。
-- 不要把 activation 扩展成常驻 watcher、daemon 或隐藏执行器；它仍然必须是 one-shot、可审计、可停止的薄层。
+不要在真实反馈前继续扩展 scheduler、自动路由或复杂 project-management 状态。

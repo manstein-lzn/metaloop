@@ -2,6 +2,11 @@
 
 Date: 2026-05-09
 
+V2 makes the code-backed boundary concrete through SQLite: identity, immutable
+hash chains, CAS, uniqueness, event cursors, duplicate fingerprints, and
+Recovery freshness are code truth. Goal understanding, Attempt planning,
+diagnosis, semantic similarity, and next-plan choice remain prompt intelligence.
+
 ## Position
 
 MetaLoop should not turn agent intelligence into a large Python framework.

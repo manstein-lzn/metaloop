@@ -19,9 +19,12 @@ Requirements:
    - `SKILL.md` exists.
    - `scripts/metaloop_kernel.py` exists.
    - `extensions/generic/profile.json` exists.
+   - `lib/metaloop_core/durable.py` exists.
    - the kernel can run `status`.
-   - a smoke test can run `design -> run -> verify` and returns
-     `completed_verified`.
+   - a v2 smoke test can initialize a Project, create a Task, and produce a
+     fresh RecoveryView.
+   - the installed directory recursively matches `skills/metaloop` after
+     excluding `__pycache__` and `*.pyc`.
 7. If permissions or SSH access fail, stop and print the exact command I should
    run manually.
 
@@ -37,28 +40,31 @@ git clone git@github.com:manstein-lzn/metaloop.git "$WORKDIR/metaloop"
 mkdir -p "$(dirname "$DEST")"
 rm -rf "$DEST"
 cp -R "$WORKDIR/metaloop/skills/metaloop" "$DEST"
+find "$DEST" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "$DEST" -type f -name '*.pyc' -delete
 
 test -f "$DEST/SKILL.md"
 test -f "$DEST/scripts/metaloop_kernel.py"
 test -f "$DEST/extensions/generic/profile.json"
+test -f "$DEST/lib/metaloop_core/durable.py"
 
 python3 "$DEST/scripts/metaloop_kernel.py" --workspace /tmp status
 
 SMOKE="$(mktemp -d /tmp/metaloop-skill-smoke.XXXXXX)"
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" design \
-  --intent "Validate installed MetaLoop skill" \
-  --rationale "A file and JSON field prove the lightweight verification flow." \
-  --non-goal "Do not rely on agent self-report." \
-  --file-exists result.txt \
-  --json-field-exists '{"path":"summary.json","field":"held_out.peak1_delta"}'
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" run \
-  --command "printf 'ok' > result.txt && printf '{\"held_out\":{\"peak1_delta\":0}}' > summary.json"
-python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" verify --json
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" project init
+TASK_JSON="$(python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" task create --title "Validate installed MetaLoop v2")"
+TASK_ID="$(printf '%s' "$TASK_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])')"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" recover write --task "$TASK_ID"
+python3 "$DEST/scripts/metaloop_kernel.py" --workspace "$SMOKE" project integrity
+
+diff -qr \
+  --exclude='__pycache__' --exclude='*.pyc' \
+  "$WORKDIR/metaloop/skills/metaloop" "$DEST"
 ````
 
 Report:
 - installed path
-- smoke verification status
+- v2 Project integrity and Recovery freshness
 - whether I need to restart Codex for `$metaloop` to appear
 ```
 
@@ -69,6 +75,6 @@ Start a new Codex session if the current one does not list `$metaloop`.
 Try this in any project:
 
 ```text
-Use $metaloop for this repository. Inspect the project first, then design a
-Mission Capsule with ExtensionSpec and VerificationSpec before executing.
+Use $metaloop for this repository. Inspect the project, create or select the
+right Task, lock its success contract, and keep the open Attempt recoverable.
 ```

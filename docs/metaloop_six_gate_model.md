@@ -2,6 +2,11 @@
 
 Date: 2026-05-12
 
+V2 implements these gates over an explicit Task and immutable subject chain.
+The State Checkpoint includes open Attempt records and a freshness-checked
+RecoveryView; Verification follows one exact Attempt/Evaluation hash chain;
+Task lifecycle mutation uses compare-and-swap in SQLite.
+
 MetaLoop is not an agent runtime. Codex remains the intelligence layer:
 understanding, design, search, coding, experiments, interpretation, and
 strategy. MetaLoop owns the critical control points that keep long work

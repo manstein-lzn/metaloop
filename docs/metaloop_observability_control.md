@@ -1,5 +1,10 @@
 # MetaLoop Observability And Control
 
+V2 status, observe, and dashboard views read `.metaloop/metaloop.db` and expose
+Task count, selected Task, readiness, acceptance state, and Recovery freshness.
+They remain read-only. Control intent that affects a v2 Task must ultimately be
+applied through the canonical service with explicit subject and Task version.
+
 Date: 2026-05-12
 
 MetaLoop must not become a black box. The system should be observable through

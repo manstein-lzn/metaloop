@@ -10,11 +10,12 @@ import sys
 from typing import Any
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+VENDORED_LIB = SKILL_ROOT / "lib"
+if str(VENDORED_LIB) not in sys.path:
+    sys.path.insert(0, str(VENDORED_LIB))
 
-import metaloop_kernel as kernel  # noqa: E402
+from metaloop_core import cli as kernel  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

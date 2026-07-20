@@ -1,122 +1,58 @@
-# MetaLoop Team Internal Preview Guide
+# MetaLoop V2 Team Trial Guide
 
-Date: 2026-05-08
+Date: 2026-07-20
 
-MetaLoop is ready for team internal preview as a Codex Skill. Treat this as a
-design-first protocol layer for complex Codex work, not as a fully hardened
-multi-agent platform.
+MetaLoop v2 is ready for real project trial as a self-contained Codex Skill.
+It is a durable work protocol, not a multi-agent runtime or project manager.
 
-## Recommended Distribution Format
+## Distribution
 
-Use a Codex install prompt as the primary distribution format.
+Install `skills/metaloop/` to `${CODEX_HOME:-$HOME/.codex}/skills/metaloop`.
+The directory includes the thin kernel, generated canonical core, references,
+extensions, and read-only dashboard. See
+[codex_install_metaloop_skill.md](codex_install_metaloop_skill.md).
 
-Why:
-
-- The team already uses Codex.
-- Codex can adapt installation to each developer's machine.
-- The skill is self-contained under `skills/metaloop/`.
-- The installer can validate the skill and run a smoke test instead of asking
-  users to copy files manually.
-
-Primary entry:
-
-- [codex_install_metaloop_skill.md](codex_install_metaloop_skill.md)
-
-Secondary manual fallback:
-
-```bash
-git clone git@github.com:manstein-lzn/metaloop.git /tmp/metaloop-skill-source
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-rm -rf "${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
-cp -R /tmp/metaloop-skill-source/skills/metaloop "${CODEX_HOME:-$HOME/.codex}/skills/metaloop"
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/metaloop/scripts/metaloop_kernel.py" --workspace . status
-```
-
-Open a new Codex session after installation if `$metaloop` does not appear in
-the available skills list.
-
-## What To Tell Internal Users
-
-Use `$metaloop` when the task needs:
-
-- deep design before implementation
-- explicit scope, non-goals, constraints, and acceptance criteria
-- structured `ExtensionSpec` / `VerificationSpec`
-- independent verification instead of trusting agent self-report
-- repair/redesign/resume decisions for long or ambiguous work
-
-Do not use `$metaloop` for tiny one-step edits where ordinary Codex is enough.
-
-## Expected First Message
-
-For an existing repository:
-
-```text
-Use $metaloop for this repository. First inspect the project deeply, then design
-a Mission Capsule with an ExtensionSpec and VerificationSpec before execution.
-Do not implement until the capsule and verification protocol are locked.
-```
-
-For a concrete task:
+## Use
 
 ```text
 Use $metaloop. I want to <task>.
 ```
 
-The skill should infer the MetaLoop protocol shape, inspect project context,
-start with design, ask only blocking questions, propose verification gates, and
-avoid execution until the contract is clear. Do not make users learn MetaLoop
-internals before they can use the skill.
+The Skill should inspect the project, resolve a Task, lock a ContractRevision,
+maintain one recoverable open Attempt, record exact evidence and decisions, and
+use a content-bound Evaluation chain for completion. Users should not need to
+name these mechanisms.
 
-## Preview Boundaries
+## Trial Scenarios
 
-MetaLoop currently provides:
+- Continue one task across context compaction during an open Attempt.
+- Pause Task A, finish Task B, then resume A without reading chat history.
+- Spawn a repair child, complete it, and verify the parent remains open.
+- Refresh a parent RecoveryView, complete its dependency, and verify the parent
+  becomes stale before resumption.
+- Record a Project decision, refresh RecoveryView, and verify the decision
+  remains in `current_decisions` after delta watermarks advance.
+- Intentionally retry an exact Attempt and judge whether `retry_reason` is
+  helpful or annoying.
+- Let two threads update the same Task with stale versions and confirm one
+  fails cleanly.
+- Change a verified artifact before acceptance and confirm the old Evaluation
+  is rejected.
+- Initialize v2, then try a v1 context/event/thread write and confirm it routes
+  to explicit v2 state or fails closed.
 
-- self-contained Codex Skill package
-- bundled lightweight kernel
-- `.metaloop/` Mission Capsule, ExecutionReport, and VerificationResult files
-- locked `ExtensionSpec` and `VerificationSpec`
-- adaptive loop, event log, thread registry, tick, outbox, relay, and routable
-  job envelope support
-- validator `mode` and `severity`
-- generic executable validators for files, commands, JSON fields/metrics, text,
-  hashes, and forbidden paths
-- manual/resource gates that block hard completion
-- revision archive for replaced capsules
+## Feedback
 
-MetaLoop does not yet provide:
+Report concrete examples of:
 
-- a fully hardened non-bypassable runtime
-- production-grade domain extension packages for every field
-- automatic trust in agent-designed VerificationSpec
-- hidden daemon/watchers or automatic agent pools
-- strong sandbox/hook enforcement in every host environment
+- missing or excessive RecoveryView information;
+- unclear Attempt boundaries;
+- duplicate fingerprint false positives/negatives;
+- friction selecting or switching Tasks;
+- DecisionEvents that should have been task- or project-scoped;
+- CAS conflicts that were confusing rather than protective;
+- v1 migration records that could not be interpreted correctly.
 
-For important work, review the proposed `VerificationSpec` before execution.
-
-## Feedback We Want
-
-Ask preview users to report:
-
-- where design felt too heavy or too shallow
-- where the VerificationSpec missed real completion criteria
-- where the agent tried to execute before locking the capsule
-- where repair vs redesign was unclear
-- which domain-specific validators/extensions would be useful
-
-## Release Positioning
-
-Use this wording:
-
-```text
-MetaLoop v0.1 internal preview: a self-contained Codex Skill for design-first,
-spec-locked, independently verified local project work.
-```
-
-Avoid claiming:
-
-```text
-Production multi-agent runtime.
-Fully non-bypassable enforcement.
-Complete domain verification ecosystem.
-```
+Do not request scheduler, vector memory, dashboards with mutation, priority,
+deadline, or agent-pool features without repeated task evidence that the core
+protocol cannot solve the observed failure.

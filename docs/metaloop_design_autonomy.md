@@ -2,6 +2,11 @@
 
 Date: 2026-05-12
 
+V2 design first resolves an explicit Task, then locks an immutable
+ContractRevision. Several independent goals in one workspace receive separate
+Task identities. Small actions remain checkpoints inside one Attempt and do
+not become Tasks automatically.
+
 MetaLoop exists to reduce user burden, not to make users speak protocol
 language. When a user invokes `$metaloop`, Codex should infer and propose the
 MetaLoop shape from the project and the goal.

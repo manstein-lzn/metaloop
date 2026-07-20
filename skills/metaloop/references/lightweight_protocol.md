@@ -2,6 +2,18 @@
 
 MetaLoop is Codex's task design and stable execution protocol layer.
 
+For new work, MetaLoop v2 uses a SQLite-backed durable work graph:
+
+```text
+Project -> Task -> ContractRevision -> Attempt -> Evaluation
+                              \-> DecisionEvent
+RecoveryView is a freshness-checked projection.
+```
+
+This is still a lightweight protocol, not a runtime. SQLite supplies local
+transactional truth and indexed bounded recovery; Codex still supplies all
+understanding, execution, and strategy.
+
 ## Product Position
 
 MetaLoop is Prompt-first for intelligence and code-backed for truth.
@@ -43,7 +55,8 @@ claims, safety/resource blockers, and artifact truth.
 
 For tool-heavy tasks, give a short preamble before inspection or execution, then
 act. For long tasks, give concise progress updates and record durable
-observations in `.metaloop/event_log.jsonl` instead of relying on chat memory.
+observations as v2 DecisionEvents. Use `.metaloop/event_log.jsonl` only when no
+v2 database exists; never split one workspace across both histories.
 
 Use bounded inspection: read enough project context to design the contract and
 verification gates, but stop when extra searching no longer changes scope,
@@ -84,6 +97,30 @@ A Mission Capsule should be readable by both user and Codex. Keep it focused on:
 - current status
 
 It is not a full transcript.
+
+In v2 this immutable content is a ContractRevision. Task lifecycle,
+active-Attempt, dependency, and acceptance-head state are stored separately.
+The root Mission Capsule remains a v1-only artifact or migration input. It is
+not writable canonical state after v2 initialization.
+
+## Durable Attempts And Recovery
+
+One Attempt is one strategy under one exact ContractRevision. It starts open,
+accepts append-only checkpoints and evidence, and becomes immutable when
+sealed. One Task may have at most one open Attempt. Task mutations require an
+expected state version; stale writers fail rather than overwrite progress.
+
+Before an Attempt, check RecoveryView freshness and exact-replay fingerprint.
+After material progress, append a checkpoint. Before handoff or context
+compaction, refresh RecoveryView. A new thread reads the Task/Contract and
+dependency heads, active or latest Attempt, selected Evaluation/acceptance
+chain, bounded current Project/Task decisions, and DecisionEvents after the
+saved cursor. Current decisions remain present after the cursor advances.
+
+Automated verification creates an Evaluation bound to the sealed Attempt hash.
+Independent review creates another Evaluation bound to that exact Evaluation
+hash. Completion follows one Task acceptance head and fails closed on stale
+IDs, hashes, authority, ContractRevision, or verified artifact content.
 
 ## Six Control Gates
 
@@ -168,9 +205,15 @@ The portable minimum is:
 SKILL.md
 references/lightweight_protocol.md
 scripts/metaloop_kernel.py
+lib/metaloop_core/
 ```
 
-The bundled kernel owns the minimal `.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow. Do not assume a repository-level command is installed in the target project.
+The thin bundled kernel calls the vendored canonical core. V2 owns
+`.metaloop/metaloop.db`; v1 compatibility supports the minimal
+`.metaloop/mission_capsule.json` and `.metaloop/verification_result.json` flow
+only before v2 initialization or as read-only migration input. V1 mutable
+commands fail closed in a v2 workspace.
+Do not assume a repository-level command is installed in the target project.
 
 In the MetaLoop repository, the same protocol boundary is being factored into `metaloop_core`: a reusable state and verification backend for Adaptive Goal Loop state, Mission Capsule I/O, ExecutionReport I/O, ExtensionSpec / VerificationSpec validation, generic validators, `verify_workspace()`, thread registry, event log, and repair/redesign vocabulary. The skill kernel intentionally remains self-contained for one-click deployment; repository tests must keep the portable kernel and `metaloop_core` semantically aligned instead of making the skill require `pip install metaloop`.
 
@@ -192,26 +235,36 @@ reviewer thread: independent contract/evidence review
 verifier/kernel: deterministic checks from locked VerificationSpec
 ```
 
-The bundled kernel records this in `.metaloop/threads.json`. The registry is not a scheduler. It is an audit and handoff artifact that records each role's `thread_id`, responsibility, status, current capsule, and last handoff artifact.
+In v1-only workspaces the bundled kernel records this in `.metaloop/threads.json`.
+V2 stores thread-to-Task focus in canonical `thread_assignments` and exposes it
+through `task assignments`. Neither surface is a scheduler.
 
-Thread context is useful for intelligence and cost control, but it is not operational truth. Multi-thread agents must synchronize through `.metaloop/` artifacts: Mission Capsule, VerificationSpec, ExecutionReport, VerificationResult, event log, attempts, decisions, and thread registry.
+Thread context is useful for intelligence and cost control, but it is not
+operational truth. Multi-thread agents must synchronize through the canonical
+v2 Task, Contract, Attempt, Evaluation, DecisionEvent, RecoveryView, and thread
+assignment state.
 
 First version rule: define and record roles before building automatic dispatch. Do not replace one-shot `codex exec` sprawl with a heavier scheduler until real usage demands it.
 
 ## Event Log
 
-Long-running tasks need a compact audit trail between design and final verification. The bundled kernel writes this to:
+Long-running tasks need a compact audit trail between design and final
+verification. V2 uses canonical DecisionEvents. V1-only workspaces instead use
+the compatibility path:
 
 ```text
 .metaloop/event_log.jsonl
 ```
 
-Use events for observations, decisions, actions, blockers, handoffs, verification notes, repairs, redesign notes, and general notes. Events are especially useful when an agent discovers that the current plan cannot proceed, changes experimental direction, or hands work to another thread.
+Use events for observations, decisions, actions, blockers, handoffs,
+verification notes, repairs, redesign notes, and general notes. In v2 every
+mutation names its Task (or explicit Project scope).
 
 Example:
 
 ```bash
 python3 "$KERNEL" --workspace . event append \
+  --task <task_id> \
   --type blocker \
   --agent worker \
   --summary "CUDA unavailable; full training cannot start." \

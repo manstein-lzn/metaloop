@@ -20,6 +20,11 @@ Use prompt / skill instructions / examples for:
 
 Use code / kernel / validators for:
 
+- Project/Task identity and dependency references
+- immutable ContractRevision, sealed Attempt, and Evaluation hashes
+- Task compare-and-swap and one-open-Attempt uniqueness
+- exact replay fingerprints and recorded retry reasons
+- monotonic DecisionEvent cursors and RecoveryView freshness
 - locked state
 - schema and hash checks
 - ExecutionReport and VerificationResult
@@ -48,5 +53,9 @@ decision
 next_plan
 evidence
 ```
+
+In v2 this durable result is a Task- or Project-scoped DecisionEvent. The event
+records that the judgment occurred; Task lifecycle changes only through the
+transactional service layer. Rich reasoning still does not belong in schema.
 
 This preserves intelligence without losing auditability.

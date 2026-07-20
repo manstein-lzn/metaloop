@@ -2,6 +2,11 @@
 
 Date: 2026-05-09
 
+In v2, observation/diagnosis/decision/next-plan output is stored as immutable
+Task- or Project-scoped DecisionEvents. Adaptive summaries are projections over
+Attempts, Evaluations, and those events rather than a competing mutable truth
+file. The root `adaptive_loop.json` remains supported for v1 compatibility.
+
 ## Position
 
 MetaLoop should converge on a generic goal-seeking loop, not a research-specific workflow.

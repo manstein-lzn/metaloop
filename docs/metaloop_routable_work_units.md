@@ -2,6 +2,12 @@
 
 Date: 2026-05-12
 
+V2 job envelopes should carry `project_id`, canonical `task_id`, and exact
+Contract/Attempt references when available. `job_id` remains transport
+identity; it must not become a competing task ontology. Routing remains a
+one-shot compatibility/extension surface and does not mutate v2 Task state
+without the normal explicit-subject and compare-and-swap service path.
+
 This note defines the minimal cross-node layer proposed for MetaLoop v1.
 It stays intentionally small:
 

@@ -203,6 +203,35 @@ def test_verify_workspace_rejects_worker_or_stale_review_result(tmp_path) -> Non
     assert any("reviewer_role" in item["message"] for item in result["warnings"])
 
 
+def test_old_review_cannot_approve_a_new_execution_report(tmp_path) -> None:
+    capsule = _write_capsule(
+        tmp_path,
+        [{"type": "manual_acceptance", "mode": "manual", "severity": "blocking", "description": "review boundary"}],
+    )
+    first_report = json.loads((tmp_path / ".metaloop" / "execution_report.json").read_text(encoding="utf-8"))
+    first = verify_workspace(tmp_path)
+    assert first["status"] == "review_required"
+    review = build_review_result(
+        workspace=tmp_path,
+        capsule=capsule,
+        decision="approved",
+        reviewer="codex-reviewer",
+        evidence=[".metaloop/execution_report.json"],
+    )
+    write_review_result(tmp_path, review)
+    assert verify_workspace(tmp_path)["status"] == "completed_verified"
+
+    second_report = build_execution_report(workspace=tmp_path, capsule=capsule, status="completed", commands=[], evidence=["new execution"])
+    write_execution_report(tmp_path, second_report)
+    second = verify_workspace(tmp_path)
+
+    assert first_report["execution_id"] != second_report["execution_id"]
+    assert second["status"] == "review_required"
+    messages = [item["message"] for item in second["warnings"] if item.get("type") == "review_result_invalid"]
+    assert any("execution_id" in item for item in messages)
+    assert any("execution_hash" in item for item in messages)
+
+
 def test_verify_workspace_rejects_tampered_spec_hash(tmp_path) -> None:
     _write_capsule(tmp_path, [{"type": "file_exists", "mode": "executable", "severity": "blocking", "path": "missing.txt"}])
     capsule_path = tmp_path / ".metaloop" / "mission_capsule.json"

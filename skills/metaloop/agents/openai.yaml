@@ -1,6 +1,6 @@
 interface:
   display_name: "MetaLoop"
-  short_description: "Design, verify, and resume Codex tasks"
-  default_prompt: "Use $metaloop. Infer the task shape from the user's goal, ask only blocking questions, design the Mission Capsule and verification protocol before execution, then guide run/verify/repair/redesign through .metaloop artifacts."
+  short_description: "Run durable, verifiable Codex tasks"
+  default_prompt: "Use $metaloop. Infer the task shape, resolve an explicit Task, lock its success contract, keep the open Attempt checkpointed and recoverable, and accept completion only through the exact Evaluation chain; ask only blocking questions and keep protocol details hidden from the user."
 policy:
   allow_implicit_invocation: true
