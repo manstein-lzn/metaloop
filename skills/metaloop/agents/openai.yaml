@@ -1,6 +1,6 @@
 interface:
   display_name: "MetaLoop"
-  short_description: "Run durable, verifiable Codex tasks"
-  default_prompt: "Use $metaloop. Infer the task shape, resolve an explicit Task, lock its success contract, keep the open Attempt checkpointed and recoverable, and accept completion only through the exact Evaluation chain; ask only blocking questions and keep protocol details hidden from the user."
+  short_description: "Run Git-aligned durable Codex tasks"
+  default_prompt: "Use $metaloop. Frame the goal, resolve an explicit Task, lock its success contract, keep the Attempt checkpointed against the live Git WorkspaceStamp, reconcile every changed path explicitly, and prove completion through exact Evidence and Evaluation bindings; ask only blocking questions and hide protocol mechanics by default."
 policy:
   allow_implicit_invocation: true

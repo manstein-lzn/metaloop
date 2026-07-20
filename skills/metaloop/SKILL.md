@@ -1,60 +1,33 @@
 ---
 name: metaloop
-description: "Use when a local project task needs durable task history, deep or progressive design, structured acceptance, independent verification, repair/redesign decisions, task switching, or recovery across long Codex sessions."
+description: "Use when a Git project task needs durable history, deep or progressive design, structured acceptance, task switching, explicit reconciliation, or recovery across long Codex sessions."
 ---
 
-# MetaLoop
+# MetaLoop v3
 
-MetaLoop keeps complex Codex work coherent across long sessions by making the
-Task, locked contract, Attempts, evidence, decisions, acceptance chain, and
-recovery state durable outside chat context.
+MetaLoop keeps complex Codex work coherent across long sessions by binding one
+Git worktree to durable Tasks, immutable contracts, workspace checkpoints,
+evidence, decisions, evaluations, and recovery state.
 
-This is a self-contained Codex Skill. Use `scripts/metaloop_kernel.py` for
-state and checks; do not assume a separate `metaloop` command is installed.
+This Skill is self-contained. Use `scripts/metaloop_kernel.py`; do not assume a
+separate package or command is installed.
 
 ## Operating Contract
 
 ```text
-Prompt handles intelligence. Code handles truth.
-Skill handles entry and alignment.
-Bundled kernel / schema / validators handle checks and durable state.
-Hooks, sandbox, or wrapper runtime handle stronger non-bypassable constraints when needed.
+Prompt handles intelligence.
+Git handles workspace-change truth.
+SQLite handles protocol-state truth.
+Project documents handle architecture-content truth.
+Validators and Review handle completion truth.
 ```
 
-MetaLoop is skill-first, not prompt-only. Keep the prompt surface short and
-outcome-first. SQLite is canonical operational truth.
+The portable kernel is a thin bootstrap over vendored `metaloop_core`. JSON and
+Markdown under `.metaloop/` are rebuildable projections. They are never a
+second write authority.
 
-## One Canonical Path
-
-Use the v2 durable work graph for all new work:
-
-```text
-.metaloop/metaloop.db
-  Project -> Task -> ContractRevision -> Attempt -> Evaluation
-                                      -> DecisionEvent
-  RecoveryView is derived and freshness-checked.
-```
-
-The bundled kernel is a thin adapter over vendored `metaloop_core`. Do not
-implement protocol behavior separately in the script. JSON/Markdown under
-`.metaloop/v2/` and status/dashboard output are rebuildable projections.
-
-Root Mission Capsule, ExecutionReport, VerificationResult, adaptive, context,
-routing, and thread files are v1 compatibility input only. Import an existing
-v1 workspace with `project migrate-legacy`. Once the database exists, v1
-mutable commands must fail closed rather than create a second truth. Read
-`references/legacy_v1_compatibility.md` only when migration is actually needed.
-
-## Six-Gate Model
-
-MetaLoop remains a small control layer around Codex:
-
-1. `Design Gate`: clarify outcome, boundaries, evidence, and stopping conditions.
-2. `State Checkpoint`: persist Attempt progress and important decisions.
-3. `Verification Gate`: let locked validators and evidence decide completion.
-4. `Adaptive Loop`: diagnose failed or partial work before retrying.
-5. `Control Point`: consume explicit external control intent at safe points.
-6. `Observation Surface`: expose read-only status, blockers, and next action.
+MetaLoop requires a local Git repository and Python 3.12+ with standard-library
+SQLite. It does not require a remote repository or clean worktree.
 
 ## User Burden
 
@@ -64,100 +37,126 @@ The user should be able to say only:
 Use $metaloop. I want to <goal>.
 ```
 
-Do not require the user to name Tasks, ContractRevisions, Attempts,
-VerificationSpecs, RecoveryViews, thread assignments, or governance fields.
-Infer the smallest adequate shape. Ask only questions that change the target,
+Do not require the user to name internal records or commands. Infer the
+smallest adequate protocol shape and ask only questions that change the target,
 acceptance, cost, permissions, destructive risk, data access, or external
 resources.
 
 ## First Response
 
-For non-trivial work, give a short preamble, then perform bounded inspection:
+For non-trivial work:
 
-- run `project status` when `.metaloop/metaloop.db` exists;
-- otherwise inspect legacy state and decide whether to migrate it;
-- read README/STATE/HANDOFF or equivalent entry documents;
-- inspect only files needed to determine scope, acceptance, risk, and evidence;
-- stop when more searching no longer changes the design or verification plan.
+1. Inspect `project status` and the selected Task RecoveryView when initialized.
+2. Read README, STATE, HANDOFF, and only the project files needed for scope,
+   acceptance, risk, and evidence.
+3. Stop inspection when more searching no longer changes the design or
+   verification plan.
+4. State the goal, success evidence, non-goals, constraints, risks, stopping
+   conditions, and whether one Task or a Task graph is needed.
+5. Lock the immutable ContractRevision before substantial execution.
 
-Before substantial execution, state the goal, success evidence, non-goals,
-constraints, risks, stopping conditions, and whether one Task or a Task graph is
-needed. Hide protocol mechanics from the user unless they are diagnosing the
-protocol itself.
+If the repository has no v3 Project, initialize it. If a non-v3 database is
+present, stop and require an explicit clean-cut archive/reinitialization; do not
+load old authority into the final protocol.
 
-## Design Gate
+## Frame, Work, Reconcile, Adapt, Prove
 
-Create or select one explicit Task and lock an immutable ContractRevision.
-Mutable lifecycle state never belongs in the contract. Every mutation must name
-its Task, Attempt, or Evaluation and use the current Task `state_version` where
-compare-and-swap is required.
+### Frame
 
-A useful contract contains:
+Perform bounded inspection and proportionate design. Lock one ContractRevision
+containing goal, rationale, constraints, non-goals, acceptance criteria,
+VerificationSpec, protocol shape, and optional execution scope.
 
-- goal and rationale;
-- non-goals and constraints;
-- observable acceptance criteria;
-- executable validators and any explicit review authority;
-- evidence requirements and stopping conditions;
-- optional V2 engineering governance for architecture-sensitive work.
+### Work
 
-Do not weaken locked acceptance after execution. Replace a defective contract
-with a new ContractRevision and an explicit reason; never silently reinterpret
-the old contract.
+Start one Attempt for one strategy under one exact ContractRevision. Record
+semantic checkpoints after meaningful progress and before context compaction,
+handoff, or Task switching.
 
-## Progressive Design Rule
+### Reconcile
+
+Git changes after the latest checkpoint make the workspace `ahead`. Explicitly
+classify every changed path before writing the next checkpoint:
+
+- `claim`: belongs to the current Attempt;
+- `defer`: intentionally excluded, with a reason;
+- `assign`: belongs to another explicit Task;
+- `conflict`: attribution is unsafe; stop and resolve.
+
+MetaLoop never guesses ownership from filenames or prose.
+
+### Adapt
+
+After failed or partial verification, record observation, diagnosis, an
+explicit decision, and the next plan before retrying. Code validates the
+vocabulary but never infers repair, redesign, or pivot from keywords.
+
+### Prove
+
+Checkpoint the current WorkspaceStamp, attach exact Evidence, seal the Attempt,
+run locked validators, satisfy required Review/user authorities, and accept the
+exact Evaluation chain. Any unacknowledged workspace state fails closed.
+
+## Six Gates
+
+1. `Design Gate`: clarify outcome, boundaries, evidence, and stopping conditions.
+2. `State Checkpoint`: persist semantic progress and a code-computed WorkspaceStamp.
+3. `Verification Gate`: let locked validators and evidence decide completion.
+4. `Adaptive Loop`: diagnose failed or partial work before retrying.
+5. `Control Point`: honor explicit external halt/resource/revision intent at safe points.
+6. `Observation Surface`: expose read-only status, blockers, and next action.
+
+## Progressive Design
 
 Use Progressive Design for architecture and long-horizon work, not as ceremony
 for every edit:
 
-- derive a coherent target model and surface missing dimensions, risks, and
-  choices;
-- identify durable invariants that later slices must preserve;
-- select the smallest end-to-end slice that tests current assumptions;
-- define cohesive module ownership and explicit interfaces;
+- derive a coherent target model and surface missing dimensions, risks, and choices;
+- separate durable invariants from the current implementation slice;
+- assign cohesive module ownership and explicit interfaces;
 - record deliberate concessions and the evidence that should revisit them;
-- prefer a representative project-native path as the first walking skeleton;
+- prefer a representative project-native walking skeleton;
 - advance only when current evidence justifies the next slice.
 
-Each design response should contribute a new deduction, missing dimension,
-risk, choice, or clearer structure. Summarize established context only when it
-creates a more useful shared model.
+Each design response should add a deduction, risk, choice, or clearer structure.
+A one-line repair should remain proportionate.
 
-## Optional V2 Governance
+## ContractRevision
 
-Use governance only for architecture, behavior, public-contract, migration, or
-cross-module changes where silent design drift is a real risk. Ordinary local
-repairs do not need it.
+ContractRevision is the only task contract. It is immutable and contains no
+mutable lifecycle status. Architecture-sensitive work may include
+`execution_scope`:
 
-The agent must explicitly choose `repair`, `extension`, or `redesign`. Code may
-validate that choice but must never infer it from prose.
+- `paths`: declared scope, never sandbox enforcement;
+- `stable_inputs`: project documents whose hashes must not drift;
+- `managed_outputs`: files that must become exact Attempt Evidence;
+- `change_kind`: explicit `repair`, `extension`, or `redesign`;
+- `migration_plan`: a locked stable input required for redesign.
 
-Governance lives inside the ContractRevision:
+Project design prose stays in project documents; the Contract stores only
+roles, paths, hashes, and scope declarations.
 
-- `stable_inputs`: governing documents or module contracts that must not drift;
-- `managed_outputs`: files this Task is expected to create or change and attach
-  as exact Attempt evidence;
-- `allowed_paths`: declared implementation scope, not sandbox enforcement;
-- `migration_plan`: a locked stable input required for `redesign`.
+## Git Workspace Contract
 
-Create the block through the V2 contract command, for example:
+Every Project records repository root, worktree path, and adapter version.
+Every Attempt records an immutable baseline WorkspaceStamp. Each checkpoint
+records the current stamp and semantic reconciliation.
 
-```bash
-python3 "$KERNEL" --workspace . task contract \
-  --task <task_id> --expected-version <n> --file contract.json \
-  --change-kind extension \
-  --stable-input governing_document=docs/architecture.md \
-  --stable-input module_contract=docs/module.md \
-  --managed-output implementation=src/feature.py \
-  --allowed-path src
-```
+Workspace alignment is exactly one of:
 
-For redesign, also pass `--migration-plan docs/migration.md`. Stable inputs are
-rechecked at Attempt start, seal, verification, review, acceptance, and selected
-Task integrity. Managed outputs must be live Attempt evidence before seal.
-Read `references/v2_governance.md` for the complete shape and semantics.
+- `aligned`: live Git state equals the latest checkpoint;
+- `ahead`: project content changed after the checkpoint;
+- `conflicted`: worktree identity, HEAD, merge state, or attribution is unsafe;
+- `unknown`: Git or bounded observation failed.
 
-## Task And Attempt Workflow
+Recovery is fresh only when its SQLite sources are current and workspace
+alignment is `aligned`. `ahead`, `conflicted`, and `unknown` block lifecycle
+completion until explicitly resolved.
+
+One worktree permits one open mutating Attempt. Parallel mutating work requires
+separate Git worktrees and therefore separate Project identities.
+
+## Canonical Commands
 
 Set the kernel path relative to this Skill:
 
@@ -165,127 +164,100 @@ Set the kernel path relative to this Skill:
 KERNEL="<skill_dir>/scripts/metaloop_kernel.py"
 ```
 
-Core commands:
+Core workflow:
 
 ```bash
 python3 "$KERNEL" --workspace . project init
 python3 "$KERNEL" --workspace . project status
 python3 "$KERNEL" --workspace . task create --title "<task>"
 python3 "$KERNEL" --workspace . task contract --task <task_id> --expected-version <n> --file contract.json
+python3 "$KERNEL" --workspace . recover write --task <task_id> --from-file resume.md
 python3 "$KERNEL" --workspace . attempt start --task <task_id> --expected-version <n> --plan "<plan>"
-python3 "$KERNEL" --workspace . attempt record --attempt <attempt_id> --type checkpoint --payload-json '{"next":"<next>"}'
+python3 "$KERNEL" --workspace . attempt record-checkpoint --attempt <attempt_id> --expected-version <n> --claimed-path <path> --next-plan "<next>"
 python3 "$KERNEL" --workspace . attempt evidence --attempt <attempt_id> --path <artifact>
 python3 "$KERNEL" --workspace . attempt seal --attempt <attempt_id> --expected-version <n>
 python3 "$KERNEL" --workspace . evaluate verify --attempt <attempt_id>
 python3 "$KERNEL" --workspace . evaluate review --evaluation <evaluation_id> --decision approved --reviewer <reviewer>
 python3 "$KERNEL" --workspace . evaluate accept --task <task_id> --evaluation <evaluation_id> --expected-version <n>
-python3 "$KERNEL" --workspace . recover show --task <task_id>
-python3 "$KERNEL" --workspace . recover write --task <task_id> --from-file resume.md
 python3 "$KERNEL" --workspace . project integrity
 ```
 
-Use one Task for one independently resumable goal. Use parent/dependency Tasks
-when a branch has its own contract, evidence, or lifecycle. A repair child may
-unblock or provide evidence to its parent but never completes the parent.
+Use `task decision`, `task depend`, `task assign`, `task return`, and Task
+transitions for explicit branching, dependencies, persistent-thread focus, and
+pause/resume. A child Task may unblock or provide evidence to a parent but
+never completes the parent implicitly.
 
-One Task may have at most one open Attempt. One Attempt is one strategy under
-one exact ContractRevision. Append checkpoints after meaningful progress and
-before likely context compaction. Record a concrete `retry_reason` before
-repeating an exact sealed or aborted Attempt. Semantic similarity remains agent
-judgment; code only blocks exact replay.
+## Task and Attempt Boundaries
 
-## Recovery And Task Switching
+Use one Task for one independently resumable goal. Create a child only when the
+branch needs its own contract, evidence, lifecycle, ownership, or stopping
+conditions. Small steps sharing one acceptance target remain checkpoints in one
+Attempt.
 
-Recovery must be `fresh` before starting or resuming expensive work. If it is
-stale, inspect its bounded delta events and refresh it. A fresh RecoveryView
-contains the contract head, dependency heads, active/latest Attempt refs,
-acceptance chain, current Task/Project decisions, and compact governance status.
+One Attempt is one strategy under one exact ContractRevision. Exact replay of a
+sealed or aborted Attempt requires a concrete retry reason. Semantic similarity
+remains Agent judgment.
 
-Persistent threads may be assigned to explicit Tasks with `task assign` and
-`task return`. Thread context is useful for intelligence but is not operational
-truth unless recorded as a checkpoint or DecisionEvent. There is no hidden
-scheduler or automatic agent pool.
+Before expensive work, RecoveryView must be fresh. Before handoff, Task switch,
+or likely context compaction, checkpoint meaningful progress and refresh
+RecoveryView.
 
-## Verification And Authority
+## Verification and Authority
 
-Verification runs the locked validators against one sealed Attempt and creates
-an immutable Evaluation. Worker self-report is not evidence. Reviews approve
-one exact Evaluation hash and therefore one exact Attempt hash.
+Worker self-report is not evidence. Verification creates an immutable
+Evaluation over one sealed Attempt hash. Review is another Evaluation over the
+previous Evaluation hash. Multiple authorities form one linear chain.
 
-Use strong validators where the claim warrants them: command tests, metrics,
-schema checks, artifact hashes, non-regression checks, and forbidden paths.
-Bare file existence and broad keyword checks are only smoke evidence.
+Use executable validators proportionate to the claim: commands, metrics,
+schemas, artifact hashes, non-regression checks, and forbidden paths. Use
+reviewer authority for delegatable judgment and user authority only when the
+user explicitly reserves it.
 
-`review_required` is delegatable to an independent reviewer. Use
-`human_acceptance_required` only when the user explicitly reserves authority.
-Every blocking authority must appear in one linear approved acceptance chain.
-Do not start another Attempt when the Task is already `ready_to_accept`.
-
-Evidence and governance are rechecked at seal, verification, review, and
-acceptance. If any bound artifact or stable input drifts, fail closed.
+Evidence, stable inputs, immutable record hashes, Git identity, and workspace
+alignment are rechecked at seal, verify, review, accept, and integrity. Do not
+start another Attempt when an approved chain is ready to accept.
 
 ## Adaptive Decisions
 
-After failed or partial verification, record observation, evaluation,
-diagnosis, an explicit decision, and the next plan before retrying:
+Use only explicit values:
 
 - `complete`: locked success is satisfied;
 - `continue`: another high-signal attempt is justified;
 - `repair`: implementation is defective while the contract remains correct;
-- `redesign`: goal, scope, authority, acceptance, or contract is defective;
+- `redesign`: goal, scope, acceptance, authority, or contract is defective;
 - `pivot`: retain the goal but change strategy;
 - `stop`: continuing is not useful;
 - `escalate`: permissions, policy, resources, or reserved authority block work.
 
-Only low-dimensional mechanical states may map automatically to `complete`,
-`continue`, `redesign`, or `escalate`. Never route repair, redesign, or pivot by
-matching words in diagnosis text.
+## Host and Guarantee Boundary
 
-## Observation And Control
+The optional `metaloop_core.host.safe_point` function is a synchronous read/check
+adapter for hosts that expose turn, compaction, or tool-batch hooks. It is not a
+daemon, watcher, scheduler, or Agent brain.
 
-Use read-only summaries for observation:
+The portable guarantee is precise:
 
-```bash
-python3 "$KERNEL" --workspace . status
-python3 "$KERNEL" --workspace . observe --format brief
-python3 "<skill_dir>/scripts/metaloop_dashboard.py" --workspace . --scope root
+```text
+No unacknowledged WorkspaceStamp may pass acceptance.
 ```
 
-The dashboard must not expose mutation routes. External control intent may be
-written under `.metaloop/control/`, but a dashboard or observer must not
-silently route work, approve resources, edit contracts, or activate workers.
-`activate` remains an explicit one-shot compatibility utility, never an agent
-brain, daemon, or watcher.
-
-## Validation Discipline
-
-- Run relevant tests, builds, type checks, metrics, or smoke tests.
-- If validation cannot run, say why and record the blocker.
-- Do not accept worker self-report as final evidence.
-- Do not weaken locked acceptance after execution.
-- If a blocking validator fails, say the target failed.
-- Before handoff, checkpoint the Attempt or record a DecisionEvent and refresh
-  RecoveryView.
+The Skill cannot control an Agent that bypasses every protocol entry. Divergence
+is discovered at the next explicit command or optional host safe point, then
+fails closed.
 
 ## Hard Boundaries
 
-- ContractRevision is new-work truth; Mission Capsule is migration input only.
-- SQLite Task lifecycle, active Attempt, and acceptance head are canonical.
-- ContractRevision, sealed Attempt, Evaluation, and DecisionEvent are immutable
-  and content-bound.
-- `default_task_id` and thread assignment are navigation only; explicit mutation
-  subject always wins.
-- V1 mutable artifacts never coexist with V2 canonical writes, except explicit
-  external control intent.
-- Project architecture prose stays in project documents; governance stores only
-  roles, paths, hashes, and scope declarations.
-- `allowed_paths` is not non-bypassable enforcement.
-- Do not build a second state system, scheduler, vector memory, transcript
-  store, project manager, or project-specific policy inside MetaLoop core.
+- SQLite is the only mutable protocol-state authority.
+- Git is workspace-change truth, not semantic or completion truth.
+- ContractRevision, sealed Attempt, Evidence, DecisionEvent, and Evaluation are
+  content-bound.
+- RecoveryView is derived and never a write authority.
+- `default_task_id` and thread assignment are navigation only.
+- Declared paths are not permission enforcement.
+- Do not build a second task ontology, hidden runtime, scheduler, vector memory,
+  transcript store, project manager, or project-specific policy in core.
 
 ## References
 
-- `references/v2_governance.md`: optional ContractRevision governance.
-- `references/legacy_v1_compatibility.md`: read/migrate legacy work only.
-- `references/lightweight_protocol.md`: product and protocol boundaries.
-- `references/prompt_first_code_backed.md`: intelligence/truth split.
+- `references/final_protocol.md`: v3 record, lifecycle, and alignment semantics.
+- `references/prompt_first_code_backed.md`: intelligence and truth boundaries.
