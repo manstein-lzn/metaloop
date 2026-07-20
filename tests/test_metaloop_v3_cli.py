@@ -65,7 +65,7 @@ def test_cli_runs_complete_git_aligned_task_and_blocks_drift(tmp_path: Path) -> 
     contract_path = repo / ".metaloop" / "contract.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
     _json(_run(repo, "task", "contract", "--task", task_id, "--expected-version", "1", "--file", str(contract_path)))
-    recovery = _json(_run(repo, "recover", "write", "--task", task_id, "--content", "ready"))
+    recovery = _json(_run(repo, "recover", "show", "--task", task_id))
     assert recovery["status"] == "fresh"
     attempt = _json(_run(repo, "attempt", "start", "--task", task_id, "--expected-version", "2", "--plan", "write result"))
     attempt_id = attempt["attempt_id"]
@@ -121,3 +121,49 @@ def test_project_init_outside_git_fails_with_actionable_error(tmp_path: Path) ->
     result = _run(tmp_path, "project", "init")
     assert result.returncode == 1
     assert "not a git repository" in result.stderr.lower()
+
+
+def test_cli_begin_and_finish_are_one_ontology_low_friction_path(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+    contract = {
+        "goal": "Complete one routine repair.",
+        "rationale": ["Exercise the alpha-optimized path."],
+        "constraints": ["Use the declared output."],
+        "non_goals": ["Do not require external authority."],
+        "acceptance_criteria": ["The executable validator passes."],
+        "verification_spec": {"validators": [{"type": "command", "mode": "executable", "severity": "blocking", "command": "true"}], "resource_gates": []},
+        "protocol_shape": "single_node",
+        "execution_scope": {
+            "paths": ["src"],
+            "stable_inputs": [{"role": "governing_document", "path": "ARCH.md"}],
+            "managed_outputs": [{"role": "implementation", "path": "src/result.txt"}],
+            "change_kind": "repair",
+            "migration_plan": None,
+        },
+    }
+    contract_path = repo / ".metaloop" / "routine-contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    begun = _json(
+        _run(
+            repo,
+            "task",
+            "begin",
+            "--title",
+            "Routine repair",
+            "--contract",
+            str(contract_path),
+            "--plan",
+            "write and verify the output",
+        )
+    )
+    assert begun["recovery"]["status"] == "fresh"
+    attempt_id = begun["attempt"]["attempt_id"]
+    (repo / "src" / "result.txt").write_text("done\n", encoding="utf-8")
+
+    finished = _json(_run(repo, "attempt", "finish", "--attempt", attempt_id))
+    assert finished["task"]["lifecycle_status"] == "completed"
+    assert finished["evaluation"]["decision"] == "approved"
+    assert finished["pending_authorities"] == []
+    assert [item["path"] for item in finished["evidence"]] == ["src/result.txt"]

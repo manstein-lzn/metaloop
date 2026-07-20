@@ -27,7 +27,7 @@ from metaloop_core.schemas import (
     TASK_SCHEMA,
     TASK_STATES,
 )
-from metaloop_core.workspace import GitWorkspace, WorkspaceStamp, changed_paths_between, compare_stamps, path_allowed
+from metaloop_core.workspace import GitWorkspace, WorkspaceStamp, alignment_reason, changed_paths_between, compare_stamps, path_allowed
 
 
 class DurableError(RuntimeError):
@@ -247,6 +247,34 @@ class DurableStore:
             conn.execute("UPDATE projects SET default_task_id=?,state_version=state_version+1,updated_at=?", (task_id, utc_now()))
         return self.project()
 
+    def begin_task(
+        self,
+        title: str,
+        contract: dict[str, Any],
+        *,
+        plan: str,
+        input_snapshot: dict[str, Any] | None = None,
+        actor: str = "codex",
+        parent_task_id: str | None = None,
+        depends_on: list[str] | None = None,
+    ) -> dict[str, Any]:
+        task = self.create_task(title, parent_task_id=parent_task_id, depends_on=depends_on)
+        locked = self.lock_contract(task["task_id"], contract, expected_version=1)
+        self.set_default(task["task_id"])
+        attempt = self.start_attempt(
+            task["task_id"],
+            expected_version=2,
+            plan=plan,
+            input_snapshot=input_snapshot or {},
+            actor=actor,
+        )
+        return {
+            "task": self.task(task["task_id"]),
+            "contract": locked,
+            "attempt": attempt,
+            "recovery": self.recovery(task["task_id"]),
+        }
+
     def lock_contract(self, task_id: str, content: dict[str, Any], *, expected_version: int, revision_reason: str = "") -> dict[str, Any]:
         task = self.task(task_id)
         if task["lifecycle_status"] != "open":
@@ -376,7 +404,7 @@ class DurableStore:
             raise DurableError(f"workspace state unknown: {current.unknown_reason}")
         previous_payload = self._latest_checkpoint_payload(attempt_id)
         previous = WorkspaceStamp.from_dict(previous_payload["workspace_stamp"]) if previous_payload and previous_payload.get("workspace_stamp") else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
-        if previous.head_oid != current.head_oid:
+        if previous.head_oid != current.head_oid and compare_stamps(previous, current) != "aligned":
             raise ConflictError("HEAD changed since the latest checkpoint; resolve the branch/reset conflict explicitly")
         delta = changed_paths_between(previous, current)
         claimed = set(str(item) for item in payload.get("claimed_paths", []))
@@ -417,6 +445,64 @@ class DurableStore:
             conn.execute("UPDATE tasks SET state_version=state_version+1,updated_at=? WHERE task_id=? AND state_version=?", (utc_now(), attempt["task_id"], expected_version))
             self._bump_project(conn)
         return record
+
+    def finish_attempt(
+        self,
+        attempt_id: str,
+        *,
+        checkpoint_payload: dict[str, Any] | None = None,
+        evidence_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        attempt = self.attempt(attempt_id)
+        if attempt["status"] != "open":
+            raise InvalidTransitionError("attempt finish requires an open Attempt")
+        task = self.task(attempt["task_id"])
+        contract = self.contract(task["task_id"])["content"]
+        current = GitWorkspace(self.workspace).stamp()
+        previous_payload = self._latest_checkpoint_payload(attempt_id)
+        previous = (
+            WorkspaceStamp.from_dict(previous_payload["workspace_stamp"])
+            if previous_payload and previous_payload.get("workspace_stamp")
+            else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
+        )
+        delta = changed_paths_between(previous, current)
+        payload = dict(checkpoint_payload or {})
+        declared_outputs = set(managed_output_paths(contract))
+        claimed = set(str(item) for item in payload.get("claimed_paths", []))
+        claimed.update(path for path in delta if path in declared_outputs)
+        payload.setdefault("completed", [])
+        payload.setdefault("observations", [])
+        payload.setdefault("diagnosis", "")
+        payload.setdefault("decision", "complete")
+        payload.setdefault("next_plan", "verify and accept the exact Attempt")
+        payload["claimed_paths"] = sorted(claimed)
+        payload.setdefault("deferred_paths", [])
+        payload.setdefault("assigned_paths", [])
+        payload.setdefault("evidence_refs", [])
+        checkpoint = self.record_checkpoint(attempt_id, payload, expected_version=task["state_version"])
+
+        bound_evidence = {item["path"]: item for item in self.evidence(attempt_id)}
+        evidence = []
+        for path in sorted(declared_outputs | set(evidence_paths or [])):
+            item = bound_evidence.get(path) or self.add_evidence(attempt_id, path)
+            evidence.append(item)
+
+        task = self.task(task["task_id"])
+        sealed = self.seal_attempt(attempt_id, expected_version=task["state_version"])
+        evaluation = self.evaluate_verify(attempt_id)
+        pending = list(evaluation["payload"].get("required_authorities", []))
+        accepted = None
+        if evaluation["decision"] == "approved" and not pending:
+            task = self.task(task["task_id"])
+            accepted = self.accept(task["task_id"], evaluation["evaluation_id"], expected_version=task["state_version"])
+        return {
+            "checkpoint": checkpoint,
+            "evidence": evidence,
+            "attempt": sealed,
+            "evaluation": evaluation,
+            "task": accepted or self.task(task["task_id"]),
+            "pending_authorities": pending,
+        }
 
     def add_evidence(self, attempt_id: str, path: str, *, description: str = "") -> dict[str, Any]:
         attempt = self.attempt(attempt_id)
@@ -489,7 +575,7 @@ class DurableStore:
             raise DurableError("verification changed or lost workspace alignment; fail closed")
         approved = all(item.get("passed") is True for item in results)
         payload = {"validator_results": results, "workspace_stamp": after.to_dict(), "required_authorities": sorted(set(required_authorities))}
-        return self._insert_evaluation(task["task_id"], "attempt", attempt_id, attempt["execution_hash"] or "", "verification", "kernel", "metaloop", "3.0", "approved" if approved else "rejected", payload)
+        return self._insert_evaluation(task["task_id"], "attempt", attempt_id, attempt["execution_hash"] or "", "verification", "kernel", "metaloop", "3.1", "approved" if approved else "rejected", payload)
 
     def review(self, evaluation_id: str, *, decision: str, reviewer: str, authority: str = "reviewer") -> dict[str, Any]:
         if decision not in EVALUATION_DECISIONS:
@@ -504,7 +590,7 @@ class DurableStore:
         if actor == reviewer:
             raise ConflictError("worker self-review is not independent")
         self._assert_aligned(attempt, self.contract(attempt["task_id"])["content"])
-        return self._insert_evaluation(evaluation["task_id"], "evaluation", evaluation_id, evaluation["content_hash"], "review", authority, reviewer, "3.0", decision, {"reviewer": reviewer, "authority": authority, "decision": decision})
+        return self._insert_evaluation(evaluation["task_id"], "evaluation", evaluation_id, evaluation["content_hash"], "review", authority, reviewer, "3.1", decision, {"reviewer": reviewer, "authority": authority, "decision": decision})
 
     def accept(self, task_id: str, evaluation_id: str, *, expected_version: int) -> dict[str, Any]:
         task = self.task(task_id)
@@ -586,10 +672,11 @@ class DurableStore:
             payload = self._latest_checkpoint_payload(attempt["attempt_id"])
             previous = WorkspaceStamp.from_dict(payload["workspace_stamp"]) if payload and payload.get("workspace_stamp") else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
         alignment = compare_stamps(previous, current)
+        transition = alignment_reason(previous, current)
         source = self._recovery_source(task, attempt, current, alignment)
         row = self.conn.execute("SELECT * FROM recovery_views WHERE task_id=?", (task_id,)).fetchone()
-        status = "incomplete" if row is None else "fresh" if row["source_hash"] == source and alignment == "aligned" else "stale"
-        return {"schema": RECOVERY_SCHEMA, "task_id": task_id, "status": status, "source_hash": source, "workspace_alignment": alignment, "workspace_stamp": current.to_dict(), "changed_paths_since_checkpoint": changed_paths_between(previous, current), "resume_markdown": row["resume_markdown"] if row else "", "task": task, "contract": self.contract(task_id) if task.get("contract_head_id") else None, "active_attempt": attempt, "latest_decisions": self.decisions(task_id), "acceptance_head_id": task.get("acceptance_head_id")}
+        status = "fresh" if alignment == "aligned" else "stale"
+        return {"schema": RECOVERY_SCHEMA, "task_id": task_id, "status": status, "source_hash": source, "workspace_alignment": alignment, "workspace_transition": transition, "workspace_stamp": current.to_dict(), "changed_paths_since_checkpoint": changed_paths_between(previous, current), "resume_markdown": row["resume_markdown"] if row else "", "task": task, "contract": self.contract(task_id) if task.get("contract_head_id") else None, "active_attempt": attempt, "latest_decisions": self.decisions(task_id), "acceptance_head_id": task.get("acceptance_head_id")}
 
     def integrity(self, task_id: str | None = None) -> dict[str, Any]:
         errors: list[str] = []

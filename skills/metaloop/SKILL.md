@@ -1,13 +1,15 @@
 ---
 name: metaloop
-description: "Use when a Git project task needs durable history, deep or progressive design, structured acceptance, task switching, explicit reconciliation, or recovery across long Codex sessions."
+description: "Use when a Git project task needs risk-proportional durable history, recovery across long sessions, task switching, explicit reconciliation, structured verification, or high-assurance review."
 ---
 
-# MetaLoop v3
+# MetaLoop v3.1
 
-MetaLoop keeps complex Codex work coherent across long sessions by binding one
+MetaLoop keeps Codex work coherent across long sessions by binding one
 Git worktree to durable Tasks, immutable contracts, workspace checkpoints,
-evidence, decisions, evaluations, and recovery state.
+evidence, decisions, evaluations, and recovery state. Assurance obligations are
+additive: ordinary work pays only continuity and executable-proof costs;
+Evidence and external authority appear only when the Contract requires them.
 
 This Skill is self-contained. Use `scripts/metaloop_kernel.py`; do not assume a
 separate package or command is installed.
@@ -44,16 +46,17 @@ resources.
 
 ## First Response
 
-For non-trivial work:
+For non-trivial or independently resumable work:
 
 1. Inspect `project status` and the selected Task RecoveryView when initialized.
 2. Read README, STATE, HANDOFF, and only the project files needed for scope,
    acceptance, risk, and evidence.
 3. Stop inspection when more searching no longer changes the design or
    verification plan.
-4. State the goal, success evidence, non-goals, constraints, risks, stopping
-   conditions, and whether one Task or a Task graph is needed.
-5. Lock the immutable ContractRevision before substantial execution.
+4. State the goal, success evidence, non-goals, constraints, risks, and stopping
+   conditions in proportion to the task.
+5. Use one Task unless independent ownership, acceptance, or stopping conditions
+   require a graph. Lock the immutable ContractRevision before execution.
 
 If the repository has no v3 Project, initialize it. If a non-v3 database is
 present, stop and require an explicit clean-cut archive/reinitialization; do not
@@ -84,6 +87,11 @@ classify every changed path before writing the next checkpoint:
 - `conflict`: attribution is unsafe; stop and resolve.
 
 MetaLoop never guesses ownership from filenames or prose.
+
+A direct Git commit may remain aligned when Git proves it is only a
+content-preserving promotion of the exact checkpointed worktree tree. Extra
+content, dirty post-commit state, branch switches, resets, and amended history
+remain conflicted.
 
 ### Adapt
 
@@ -121,6 +129,23 @@ for every edit:
 Each design response should add a deduction, risk, choice, or clearer structure.
 A one-line repair should remain proportionate.
 
+## Proportional Assurance
+
+Use the lowest obligations that can defend the claim:
+
+1. `continuity`: Task, ContractRevision, Attempt, and derived RecoveryView;
+2. `executable proof`: add deterministic validators when correctness is
+   mechanically testable;
+3. `exact output proof`: add managed outputs and Evidence when artifact identity
+   matters;
+4. `external authority`: add reviewer or user authority only for semantic or
+   explicitly reserved acceptance.
+
+These are additive Contract obligations, not separate modes or state systems.
+Architecture, research conclusions, data boundaries, irreversible operations,
+and formal acceptance warrant full governance. Formatting, targeted tests,
+local inventory repair, and documentation synchronization normally do not.
+
 ## ContractRevision
 
 ContractRevision is the only task contract. It is immutable and contains no
@@ -149,6 +174,11 @@ Workspace alignment is exactly one of:
 - `conflicted`: worktree identity, HEAD, merge state, or attribution is unsafe;
 - `unknown`: Git or bounded observation failed.
 
+WorkspaceStamp records the current `HEAD` tree, its direct parents, and an exact
+materialized worktree tree computed through an isolated temporary Git index.
+A new direct commit is aligned only when its tree equals the previous
+materialized tree and the live index/worktree are clean.
+
 Recovery is fresh only when its SQLite sources are current and workspace
 alignment is `aligned`. `ahead`, `conflicted`, and `unknown` block lifecycle
 completion until explicitly resolved.
@@ -156,7 +186,7 @@ completion until explicitly resolved.
 One worktree permits one open mutating Attempt. Parallel mutating work requires
 separate Git worktrees and therefore separate Project identities.
 
-## Canonical Commands
+## Primary Commands
 
 Set the kernel path relative to this Skill:
 
@@ -164,23 +194,26 @@ Set the kernel path relative to this Skill:
 KERNEL="<skill_dir>/scripts/metaloop_kernel.py"
 ```
 
-Core workflow:
+Routine workflow:
 
 ```bash
 python3 "$KERNEL" --workspace . project init
 python3 "$KERNEL" --workspace . project status
-python3 "$KERNEL" --workspace . task create --title "<task>"
-python3 "$KERNEL" --workspace . task contract --task <task_id> --expected-version <n> --file contract.json
-python3 "$KERNEL" --workspace . recover write --task <task_id> --from-file resume.md
-python3 "$KERNEL" --workspace . attempt start --task <task_id> --expected-version <n> --plan "<plan>"
-python3 "$KERNEL" --workspace . attempt record-checkpoint --attempt <attempt_id> --expected-version <n> --claimed-path <path> --next-plan "<next>"
-python3 "$KERNEL" --workspace . attempt evidence --attempt <attempt_id> --path <artifact>
-python3 "$KERNEL" --workspace . attempt seal --attempt <attempt_id> --expected-version <n>
-python3 "$KERNEL" --workspace . evaluate verify --attempt <attempt_id>
-python3 "$KERNEL" --workspace . evaluate review --evaluation <evaluation_id> --decision approved --reviewer <reviewer>
-python3 "$KERNEL" --workspace . evaluate accept --task <task_id> --evaluation <evaluation_id> --expected-version <n>
+python3 "$KERNEL" --workspace . task begin --title "<task>" --contract contract.json --plan "<plan>"
+python3 "$KERNEL" --workspace . attempt finish --attempt <attempt_id> --claimed-path <path>
 python3 "$KERNEL" --workspace . project integrity
 ```
+
+`task begin` composes create, contract, select, and Attempt start. `attempt
+finish` checkpoints explicit path classifications, binds declared managed
+outputs as Evidence, seals, verifies, and accepts only when no external
+authority is pending. Both write the same canonical records as the low-level
+commands.
+
+Use low-level `task create/contract`, `attempt start/record-checkpoint/evidence/
+seal`, and `evaluate verify/review/accept` when progressive design, multiple
+Attempts, failed verification, or external authority needs explicit control.
+`recover write` is optional resume annotation, never a start prerequisite.
 
 Use `task decision`, `task depend`, `task assign`, `task return`, and Task
 transitions for explicit branching, dependencies, persistent-thread focus, and
@@ -194,13 +227,26 @@ branch needs its own contract, evidence, lifecycle, ownership, or stopping
 conditions. Small steps sharing one acceptance target remain checkpoints in one
 Attempt.
 
+Never create a Task solely because:
+
+- a validator or test failed;
+- a reviewer requested changes;
+- a Contract validator or scope needs correction;
+- documentation or state needs synchronization;
+- the exact checkpointed content was committed to Git.
+
+Implementation failure starts a new Attempt under the same ContractRevision.
+A defective goal, scope, validator, or authority creates a new ContractRevision
+in the same Task. A commit is a workspace transition, not implementation work.
+
 One Attempt is one strategy under one exact ContractRevision. Exact replay of a
 sealed or aborted Attempt requires a concrete retry reason. Semantic similarity
 remains Agent judgment.
 
-Before expensive work, RecoveryView must be fresh. Before handoff, Task switch,
-or likely context compaction, checkpoint meaningful progress and refresh
-RecoveryView.
+Before expensive work, the derived RecoveryView must be fresh. It is computed
+from canonical SQLite and live Git state and does not require a prior write.
+Before handoff, Task switch, or likely context compaction, checkpoint meaningful
+progress. Write a resume annotation only when it adds non-derivable context.
 
 ## Verification and Authority
 
@@ -212,6 +258,12 @@ Use executable validators proportionate to the claim: commands, metrics,
 schemas, artifact hashes, non-regression checks, and forbidden paths. Use
 reviewer authority for delegatable judgment and user authority only when the
 user explicitly reserves it.
+
+Permission to continue routine work is not acceptance authority. Record bounded
+standing permission as a DecisionEvent when useful, but do not add a manual
+user-acceptance validator unless the user reserved approval of the result.
+Reviewer authority is for semantic claims and conclusions, not formatting,
+status updates, or mechanically decidable checks.
 
 Evidence, stable inputs, immutable record hashes, Git identity, and workspace
 alignment are rechecked at seal, verify, review, accept, and integrity. Do not

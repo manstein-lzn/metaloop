@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from metaloop_core.workspace import GitWorkspace, GitWorkspaceError, changed_paths_between, compare_stamps
+from metaloop_core.workspace import GitWorkspace, GitWorkspaceError, WorkspaceStamp, alignment_reason, changed_paths_between, compare_stamps, is_content_preserving_commit
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -109,3 +109,61 @@ def test_head_change_is_conflicted_not_silently_aligned(tmp_path: Path) -> None:
     _git(repo, "commit", "-m", "change")
     after = adapter.stamp()
     assert compare_stamps(before, after) == "conflicted"
+
+
+def test_exact_worktree_commit_is_content_preserving_promotion(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    adapter = GitWorkspace(repo)
+    (repo / "result.txt").write_text("accepted\n", encoding="utf-8")
+    checkpoint = adapter.stamp()
+
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "promote exact content")
+    promoted = adapter.stamp()
+
+    assert is_content_preserving_commit(checkpoint, promoted) is True
+    assert compare_stamps(checkpoint, promoted) == "aligned"
+    assert alignment_reason(checkpoint, promoted) == "content_preserving_commit"
+    assert changed_paths_between(checkpoint, promoted) == []
+
+
+def test_commit_promotion_rejects_extra_or_dirty_content(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    adapter = GitWorkspace(repo)
+    (repo / "result.txt").write_text("checkpointed\n", encoding="utf-8")
+    checkpoint = adapter.stamp()
+    (repo / "extra.txt").write_text("not checkpointed\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "contains extra content")
+    assert compare_stamps(checkpoint, adapter.stamp()) == "conflicted"
+
+    dirty_root = tmp_path / "dirty-case"
+    dirty_root.mkdir()
+    repo = _repo(dirty_root)
+    adapter = GitWorkspace(repo)
+    (repo / "result.txt").write_text("checkpointed\n", encoding="utf-8")
+    checkpoint = adapter.stamp()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "promote then drift")
+    (repo / "result.txt").write_text("drifted\n", encoding="utf-8")
+    assert compare_stamps(checkpoint, adapter.stamp()) == "conflicted"
+
+
+def test_legacy_v3_stamp_remains_aligned_without_schema_migration(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    current = GitWorkspace(repo).stamp()
+    legacy_payload = current.to_dict()
+    legacy_payload.pop("head_tree_digest")
+    legacy_payload.pop("head_parent_oids")
+    legacy_payload.pop("materialized_tree_digest")
+    legacy = WorkspaceStamp.from_dict(legacy_payload)
+
+    assert compare_stamps(legacy, current) == "aligned"
+
+    (repo / "result.txt").write_text("new\n", encoding="utf-8")
+    dirty_legacy_payload = GitWorkspace(repo).stamp().to_dict()
+    dirty_legacy_payload.pop("materialized_tree_digest")
+    dirty_legacy = WorkspaceStamp.from_dict(dirty_legacy_payload)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "legacy stamp cannot prove promotion")
+    assert compare_stamps(dirty_legacy, GitWorkspace(repo).stamp()) == "conflicted"

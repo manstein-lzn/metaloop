@@ -1,11 +1,12 @@
-# MetaLoop v3 当前状态
+# MetaLoop v3.1 当前状态
 
 最后更新：2026-07-20
 
 ## 一句话状态
 
-MetaLoop v3 是 **Skill-only / Git-backed / SQLite-canonical** durable work protocol：
-Git 证明 workspace 机械变化，SQLite 保存 Task history、evidence、authority 和 recovery。
+MetaLoop v3.1 是 **risk-proportional / Skill-only / Git-backed / SQLite-canonical**
+durable work protocol：Git 证明 workspace 机械变化，SQLite 保存 Task history、evidence、
+authority 和 recovery。
 
 ## 已实现
 
@@ -22,15 +23,22 @@ Git 证明 workspace 机械变化，SQLite 保存 Task history、evidence、auth
 - `Frame -> Work -> Reconcile -> Adapt -> Prove` 与条件式 Progressive Design。
 - 同步 host safe point；无 scheduler、daemon、watcher、transcript、vector memory 或管理 UI。
 - canonical source 自动生成 self-contained Skill，portable kernel 仅为 bootstrap。
+- RecoveryView 真正 live-derived；无需先写 resume annotation 即可开始 Attempt。
+- WorkspaceStamp 记录 HEAD tree、parent OIDs 和 isolated-index materialized tree；exact
+  direct commit promotion 不再需要 promotion Task。
+- `task begin` 与 `attempt finish` 把普通路径压缩为两个显式协议操作，仍复用同一
+  canonical lifecycle。
+- 测试失败、review follow-up、Contract 修订和 commit 保持在原 Task；外部 authority
+  仅对 Contract 明确声明的语义结论生效。
 
-## 试用重点
+## Alpha 复测重点
 
-1. context compaction 后 RecoveryView 是否足以恢复下一步与 changed paths。
-2. Task switch、repair child、dependency 和 one-worktree 规则是否自然。
-3. ahead/conflicted/unknown diagnostics 是否让 reconcile 可执行。
-4. Progressive Design 的收益是否超过额外设计负担。
-5. managed outputs、stable inputs 和线性 authority chain 是否阻止误验收。
-6. clean target 安装和 long-task dogfood 的实际摩擦。
+1. 普通局部修复是否只需 `begin`、一次编辑和 `finish`。
+2. commit 后是否保持 fresh/aligned 且没有 clean-head promotion Task。
+3. validator 失败、review 修改和 Contract 修订是否留在同一 Task。
+4. reviewer/user authority 是否只出现在语义或正式 acceptance。
+5. context compaction、Task switch 和 repair child 是否继续可靠恢复。
+6. 高风险阶段的 Evidence、stable inputs 和线性 authority chain 是否保持原保证。
 
 ## 稳定边界
 

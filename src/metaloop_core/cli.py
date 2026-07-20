@@ -13,7 +13,7 @@ from metaloop_core.workspace import GitWorkspaceError
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="MetaLoop v3 Git-backed durable work protocol")
+    parser = argparse.ArgumentParser(description="MetaLoop v3.1 risk-proportional durable work protocol")
     parser.add_argument("--workspace", default=".", help="Git worktree governed by MetaLoop.")
     commands = parser.add_subparsers(dest="command", required=True)
     _project_parser(commands)
@@ -58,6 +58,20 @@ def _task_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) 
     create.add_argument("--title", required=True)
     create.add_argument("--parent-task")
     create.add_argument("--depends-on", action="append", default=[])
+    begin = sub.add_parser("begin", help="Create, contract, select, and start one Task.")
+    begin.add_argument("--title", required=True)
+    begin.add_argument("--contract", required=True)
+    begin.add_argument("--plan", required=True)
+    begin.add_argument("--input-json", default="{}")
+    begin.add_argument("--input-file")
+    begin.add_argument("--actor", default="codex")
+    begin.add_argument("--parent-task")
+    begin.add_argument("--depends-on", action="append", default=[])
+    begin.add_argument("--change-kind", choices=["repair", "extension", "redesign"])
+    begin.add_argument("--stable-input", action="append", default=[], metavar="ROLE=PATH")
+    begin.add_argument("--managed-output", action="append", default=[], metavar="ROLE=PATH")
+    begin.add_argument("--allowed-path", action="append", default=[])
+    begin.add_argument("--migration-plan")
     sub.add_parser("list")
     show = sub.add_parser("show")
     show.add_argument("--task", required=True)
@@ -127,6 +141,18 @@ def _attempt_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser
     evidence.add_argument("--attempt", required=True)
     evidence.add_argument("--path", required=True)
     evidence.add_argument("--description", default="")
+    finish = sub.add_parser("finish", help="Checkpoint, bind evidence, verify, and accept when authority permits.")
+    finish.add_argument("--attempt", required=True)
+    finish.add_argument("--completed", action="append", default=[])
+    finish.add_argument("--observation", action="append", default=[])
+    finish.add_argument("--diagnosis", default="")
+    finish.add_argument("--decision", choices=sorted(DECISIONS), default="complete")
+    finish.add_argument("--next-plan", default="verify and accept the exact Attempt")
+    finish.add_argument("--claimed-path", action="append", default=[])
+    finish.add_argument("--deferred-path", action="append", default=[], metavar="PATH=REASON")
+    finish.add_argument("--assigned-path", action="append", default=[], metavar="PATH=TASK")
+    finish.add_argument("--evidence-ref", action="append", default=[])
+    finish.add_argument("--evidence-path", action="append", default=[])
     seal = sub.add_parser("seal")
     seal.add_argument("--attempt", required=True)
     seal.add_argument("--expected-version", required=True, type=int)
@@ -183,6 +209,19 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
     if args.command == "task":
         if args.task_command == "create":
             return store.create_task(args.title, parent_task_id=args.parent_task, depends_on=args.depends_on)
+        if args.task_command == "begin":
+            contract = _read_object(args.contract)
+            _apply_scope_arguments(contract, args)
+            inputs = _read_object(args.input_file) if args.input_file else json.loads(args.input_json)
+            return store.begin_task(
+                args.title,
+                contract,
+                plan=args.plan,
+                input_snapshot=inputs,
+                actor=args.actor,
+                parent_task_id=args.parent_task,
+                depends_on=args.depends_on,
+            )
         if args.task_command == "list":
             return [_task_summary(store, item["task_id"]) for item in store.tasks()]
         if args.task_command == "show":
@@ -210,20 +249,15 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
             inputs = _read_object(args.input_file) if args.input_file else json.loads(args.input_json)
             return store.start_attempt(args.task, expected_version=args.expected_version, plan=args.plan, input_snapshot=inputs, actor=args.actor, retry_of=args.retry_of, retry_reason=args.retry_reason)
         if args.attempt_command == "record-checkpoint":
-            payload = {
-                "completed": args.completed,
-                "observations": args.observation,
-                "diagnosis": args.diagnosis,
-                "decision": args.decision,
-                "next_plan": args.next_plan,
-                "claimed_paths": args.claimed_path,
-                "deferred_paths": [_pair(item, "reason") for item in args.deferred_path],
-                "assigned_paths": [_pair(item, "task_id") for item in args.assigned_path],
-                "evidence_refs": args.evidence_ref,
-            }
-            return store.record_checkpoint(args.attempt, payload, expected_version=args.expected_version)
+            return store.record_checkpoint(args.attempt, _checkpoint_payload(args), expected_version=args.expected_version)
         if args.attempt_command == "evidence":
             return store.add_evidence(args.attempt, args.path, description=args.description)
+        if args.attempt_command == "finish":
+            return store.finish_attempt(
+                args.attempt,
+                checkpoint_payload=_checkpoint_payload(args),
+                evidence_paths=args.evidence_path,
+            )
         if args.attempt_command == "seal":
             return store.seal_attempt(args.attempt, expected_version=args.expected_version)
         if args.attempt_command == "abort":
@@ -317,6 +351,20 @@ def _pair(value: str, key: str) -> dict[str, str]:
         raise ValueError(f"value must use PATH={key.upper()}")
     path, detail = value.split("=", 1)
     return {"path": path, key: detail}
+
+
+def _checkpoint_payload(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "completed": args.completed,
+        "observations": args.observation,
+        "diagnosis": args.diagnosis,
+        "decision": args.decision,
+        "next_plan": args.next_plan,
+        "claimed_paths": args.claimed_path,
+        "deferred_paths": [_pair(item, "reason") for item in args.deferred_path],
+        "assigned_paths": [_pair(item, "task_id") for item in args.assigned_path],
+        "evidence_refs": args.evidence_ref,
+    }
 
 
 def _read_object(path: str | None) -> dict[str, Any]:

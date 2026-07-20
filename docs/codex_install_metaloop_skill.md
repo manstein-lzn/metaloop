@@ -1,15 +1,15 @@
-# Install MetaLoop v3 Codex Skill
+# Install MetaLoop v3.1 Codex Skill
 
-MetaLoop v3 is self-contained. Install only `skills/metaloop/`; no Python package
+MetaLoop v3.1 is self-contained. Install only `skills/metaloop/`; no Python package
 installation is required.
 
 ## Codex Install Request
 
 ```text
-Install the complete MetaLoop v3 Skill directory from skills/metaloop into
+Install the complete MetaLoop v3.1 Skill directory from skills/metaloop into
 ${CODEX_HOME:-$HOME/.codex}/skills/metaloop. Replace the existing directory,
 remove Python caches, verify the thin kernel and vendored-core parity, then run
-a complete v3 smoke test in a temporary local Git repository. Do not modify the
+a complete v3.1 smoke test in a temporary local Git repository. Do not modify the
 current project except for the Skill destination.
 ```
 
@@ -37,10 +37,11 @@ test ! -e "$DEST/references/v2_governance.md"
 
 ## Smoke Contract
 
-Create a temporary Git repository with one commit. Run `project init`, create and
-contract a Task, write a fresh RecoveryView, start an Attempt, edit a file, confirm
-alignment is `ahead`, checkpoint the claimed path, attach Evidence, seal, verify,
-accept, and run `project integrity`.
+Create a temporary Git repository with one commit. Run `project init`, then use
+`task begin`, edit one managed output, and use `attempt finish`. Confirm automatic
+Evidence, approved verification, accepted lifecycle, and passing integrity.
+Commit the exact accepted content and confirm Recovery remains fresh/aligned
+without a promotion Task. No `recover write` is required.
 
 The expected result is schema version `3`, completed Task lifecycle, fresh/aligned
 RecoveryView, and passing integrity. A remote repository is not required.

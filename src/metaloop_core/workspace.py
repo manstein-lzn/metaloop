@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 from typing import Any, Iterable
 
 from metaloop_core.schemas import ALIGNMENT_STATES, WORKSPACE_STAMP_SCHEMA
@@ -26,6 +27,9 @@ class WorkspaceStamp:
     worktree_digest: str
     changed_paths_digest: str
     changed_path_count: int
+    head_tree_digest: str = ""
+    head_parent_oids: tuple[str, ...] = ()
+    materialized_tree_digest: str = ""
     changed_paths: tuple[str, ...] = ()
     path_states: tuple[tuple[str, str], ...] = ()
     unknown_reason: str | None = None
@@ -50,6 +54,9 @@ class WorkspaceStamp:
             "worktree_digest": self.worktree_digest,
             "changed_paths_digest": self.changed_paths_digest,
             "changed_path_count": self.changed_path_count,
+            "head_tree_digest": self.head_tree_digest,
+            "head_parent_oids": list(self.head_parent_oids),
+            "materialized_tree_digest": self.materialized_tree_digest,
             "changed_paths": list(self.changed_paths),
             "path_states": {key: value for key, value in self.path_states},
             "unknown_reason": self.unknown_reason,
@@ -72,6 +79,9 @@ class WorkspaceStamp:
             worktree_digest=str(payload.get("worktree_digest") or ""),
             changed_paths_digest=str(payload.get("changed_paths_digest") or ""),
             changed_path_count=int(payload.get("changed_path_count") or 0),
+            head_tree_digest=str(payload.get("head_tree_digest") or ""),
+            head_parent_oids=tuple(str(item) for item in payload.get("head_parent_oids", [])),
+            materialized_tree_digest=str(payload.get("materialized_tree_digest") or ""),
             changed_paths=tuple(str(item) for item in payload.get("changed_paths", [])),
             path_states=tuple(sorted((str(key), str(value)) for key, value in raw_states.items())),
             unknown_reason=payload.get("unknown_reason"),
@@ -131,6 +141,20 @@ class GitWorkspace:
             raise GitWorkspaceError(message[:240])
         return result.stdout
 
+    def _run_with_env(self, env: dict[str, str], *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=self.workspace,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "git command failed").strip()
+            raise GitWorkspaceError(message[:240])
+        return result.stdout
+
     def identity(self) -> WorkspaceIdentity:
         root = Path(self._run("rev-parse", "--show-toplevel").strip()).resolve()
         common_dir = Path(self._run("rev-parse", "--path-format=absolute", "--git-common-dir").strip()).resolve()
@@ -141,6 +165,8 @@ class GitWorkspace:
         try:
             identity = self.identity()
             head = self._head_oid()
+            head_tree_digest = self._head_tree_digest(head)
+            head_parent_oids = self._head_parent_oids(head)
             index_digest = self._index_digest()
             entries = self._status_entries()
             if len(entries) > self.max_paths:
@@ -166,6 +192,11 @@ class GitWorkspace:
             changed_paths = tuple(sorted(path for _, path in normalized))
             changed_digest = _digest_json(normalized)
             worktree_digest = _digest_json(sorted(path_states.items()))
+            materialized_tree_digest = (
+                head_tree_digest
+                if not normalized and index_digest == head_tree_digest
+                else self._materialized_tree_digest(head)
+            )
             return WorkspaceStamp(
                 adapter=identity.adapter,
                 adapter_version=identity.adapter_version,
@@ -176,6 +207,9 @@ class GitWorkspace:
                 worktree_digest=worktree_digest,
                 changed_paths_digest=changed_digest,
                 changed_path_count=len(changed_paths),
+                head_tree_digest=head_tree_digest,
+                head_parent_oids=head_parent_oids,
+                materialized_tree_digest=materialized_tree_digest,
                 changed_paths=changed_paths,
                 path_states=tuple(sorted(path_states.items())),
             )
@@ -190,6 +224,8 @@ class GitWorkspace:
                 worktree_digest="unknown",
                 changed_paths_digest="unknown",
                 changed_path_count=0,
+                head_tree_digest="unknown",
+                materialized_tree_digest="unknown",
                 unknown_reason=str(exc)[:240],
             )
 
@@ -202,6 +238,41 @@ class GitWorkspace:
     def _index_digest(self) -> str:
         tree = self._run("write-tree").strip()
         return "git-tree:" + tree
+
+    def _head_tree_digest(self, head: str) -> str:
+        if head == "UNBORN":
+            return "git-tree:" + self._temporary_tree("UNBORN", add_worktree=False)
+        return "git-tree:" + self._run("rev-parse", f"{head}^{{tree}}").strip()
+
+    def _head_parent_oids(self, head: str) -> tuple[str, ...]:
+        if head == "UNBORN":
+            return ()
+        value = self._run("show", "-s", "--format=%P", head).strip()
+        return tuple(value.split()) if value else ()
+
+    def _materialized_tree_digest(self, head: str) -> str:
+        return "git-tree:" + self._temporary_tree(head, add_worktree=True)
+
+    def _temporary_tree(self, head: str, *, add_worktree: bool) -> str:
+        descriptor, index_path = tempfile.mkstemp(prefix="metaloop-index-")
+        os.close(descriptor)
+        os.unlink(index_path)
+        env = dict(os.environ)
+        env["GIT_INDEX_FILE"] = index_path
+        try:
+            if head == "UNBORN":
+                self._run_with_env(env, "read-tree", "--empty")
+            else:
+                self._run_with_env(env, "read-tree", head)
+            if add_worktree:
+                self._run_with_env(env, "add", "-A", "--", ".")
+                if head == "UNBORN":
+                    self._run_with_env(env, "rm", "-r", "--cached", "--ignore-unmatch", "--", ".metaloop")
+                else:
+                    self._run_with_env(env, "reset", "-q", head, "--", ".metaloop")
+            return self._run_with_env(env, "write-tree").strip()
+        finally:
+            Path(index_path).unlink(missing_ok=True)
 
     def _status_entries(self) -> list[tuple[str, str, str | None]]:
         raw = self._run_bytes("-c", "core.quotePath=false", "status", "--porcelain=v2", "-z", "--untracked-files=all")
@@ -244,18 +315,63 @@ def compare_stamps(previous: WorkspaceStamp | None, current: WorkspaceStamp) -> 
     if previous.repository_root != current.repository_root or previous.worktree_path != current.worktree_path:
         return "conflicted"
     if previous.head_oid != current.head_oid:
-        return "conflicted"
+        return "aligned" if is_content_preserving_commit(previous, current) else "conflicted"
     if any(value.startswith("unmerged:") for _, value in current.path_states):
         return "conflicted"
-    if previous.content_hash() == current.content_hash():
+    if _same_workspace_state(previous, current):
         return "aligned"
     return "ahead"
 
 
 def changed_paths_between(previous: WorkspaceStamp | None, current: WorkspaceStamp) -> list[str]:
+    if previous is not None and is_content_preserving_commit(previous, current):
+        return []
     before = previous.path_state_map() if previous else {}
     after = current.path_state_map()
     return sorted({*before, *after} - {key for key in before if before.get(key) == after.get(key)})
+
+
+def is_content_preserving_commit(previous: WorkspaceStamp, current: WorkspaceStamp) -> bool:
+    if current.unknown_reason or previous.unknown_reason:
+        return False
+    if previous.repository_root != current.repository_root or previous.worktree_path != current.worktree_path:
+        return False
+    if not previous.materialized_tree_digest or previous.materialized_tree_digest in {"unknown", "git-tree:"}:
+        return False
+    return (
+        previous.head_oid in current.head_parent_oids
+        and current.changed_path_count == 0
+        and not current.path_states
+        and current.index_digest == current.head_tree_digest
+        and previous.materialized_tree_digest == current.head_tree_digest
+    )
+
+
+def alignment_reason(previous: WorkspaceStamp | None, current: WorkspaceStamp) -> str:
+    if previous is not None and is_content_preserving_commit(previous, current):
+        return "content_preserving_commit"
+    return compare_stamps(previous, current)
+
+
+def _same_workspace_state(previous: WorkspaceStamp, current: WorkspaceStamp) -> bool:
+    common_equal = (
+        previous.adapter == current.adapter
+        and previous.adapter_version == current.adapter_version
+        and previous.repository_root == current.repository_root
+        and previous.worktree_path == current.worktree_path
+        and previous.head_oid == current.head_oid
+        and previous.index_digest == current.index_digest
+        and previous.worktree_digest == current.worktree_digest
+        and previous.changed_paths_digest == current.changed_paths_digest
+        and previous.changed_path_count == current.changed_path_count
+        and previous.changed_paths == current.changed_paths
+        and previous.path_states == current.path_states
+    )
+    if not common_equal:
+        return False
+    if previous.materialized_tree_digest and current.materialized_tree_digest:
+        return previous.materialized_tree_digest == current.materialized_tree_digest
+    return True
 
 
 def path_allowed(path: str, allowed_paths: Iterable[str]) -> bool:
