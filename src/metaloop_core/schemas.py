@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 SCHEMA_VERSION = 3
+PROTOCOL_VERSION = "3.2"
 PROJECT_SCHEMA = "metaloop.final.project"
 TASK_SCHEMA = "metaloop.final.task"
 CONTRACT_SCHEMA = "metaloop.final.contract"
@@ -20,3 +21,13 @@ DECISION_TYPES = {"observation", "diagnosis", "decision", "next_plan", "blocker"
 ALIGNMENT_STATES = {"aligned", "ahead", "conflicted", "unknown"}
 CHANGE_KINDS = {"repair", "extension", "redesign"}
 SCOPE_ROLES = {"governing_document", "module_contract", "migration_plan", "implementation", "test_contract"}
+
+CONTRACT_VERSION = "1.1"
+LEGACY_CONTRACT_VERSION = "1.0"
+ASSURANCE_LEVELS = {
+    "durable_routine": 1,
+    "governed": 2,
+    "high_assurance": 3,
+}
+ASSURANCE_TIERS = set(ASSURANCE_LEVELS)
+AUTHORITIES = {"reviewer", "user"}

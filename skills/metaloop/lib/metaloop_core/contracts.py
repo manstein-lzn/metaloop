@@ -1,20 +1,31 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
-from metaloop_core.schemas import CHANGE_KINDS, CONTRACT_SCHEMA, SCOPE_ROLES
+from metaloop_core.schemas import (
+    ASSURANCE_TIERS,
+    AUTHORITIES,
+    CHANGE_KINDS,
+    CONTRACT_SCHEMA,
+    CONTRACT_VERSION,
+    LEGACY_CONTRACT_VERSION,
+    SCOPE_ROLES,
+)
 
 
 def normalize_contract(workspace: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace).expanduser().resolve()
     if not isinstance(payload, dict):
         raise ValueError("contract must be an object")
-    content = dict(payload)
+    content = deepcopy(payload)
     content["schema"] = CONTRACT_SCHEMA
-    content["version"] = "1.0"
+    content["version"] = CONTRACT_VERSION
+    content["assurance"] = _normalize_assurance(content.get("assurance"))
+    content["verification_spec"] = _normalize_verification_spec(content.get("verification_spec"))
     scope = dict(content.get("execution_scope") or {})
     scope["paths"] = [_safe_relative(path, "execution_scope.paths") for path in scope.get("paths", [])]
     stable_inputs = []
@@ -45,14 +56,51 @@ def validate_contract(payload: Any) -> list[str]:
     errors: list[str] = []
     if payload.get("schema") != CONTRACT_SCHEMA:
         errors.append(f"contract.schema must be {CONTRACT_SCHEMA}")
-    if payload.get("version") != "1.0":
-        errors.append("contract.version must be 1.0")
+    version = payload.get("version")
+    if version not in {LEGACY_CONTRACT_VERSION, CONTRACT_VERSION}:
+        errors.append(f"contract.version must be {LEGACY_CONTRACT_VERSION} or {CONTRACT_VERSION}")
     for key in ("goal", "rationale", "constraints", "non_goals", "acceptance_criteria", "verification_spec", "protocol_shape"):
         if key not in payload:
             errors.append(f"contract.{key} is required")
     for key in ("rationale", "constraints", "non_goals", "acceptance_criteria"):
         if key in payload and not isinstance(payload[key], list):
             errors.append(f"contract.{key} must be a list")
+    assurance = payload.get("assurance")
+    if version == CONTRACT_VERSION and not isinstance(assurance, dict):
+        errors.append("contract.assurance is required for contract version 1.1")
+    if assurance is not None:
+        errors.extend(_validate_assurance(assurance))
+    verification = payload.get("verification_spec")
+    if not isinstance(verification, dict):
+        errors.append("contract.verification_spec must be an object")
+    else:
+        validators = verification.get("validators", [])
+        if not isinstance(validators, list):
+            errors.append("verification_spec.validators must be a list")
+        else:
+            validator_ids: set[str] = set()
+            for index, validator in enumerate(validators):
+                label = f"verification_spec.validators[{index}]"
+                if not isinstance(validator, dict):
+                    errors.append(f"{label} must be an object")
+                    continue
+                validator_id = validator.get("validator_id")
+                if validator_id is not None:
+                    if not isinstance(validator_id, str) or not validator_id.strip():
+                        errors.append(f"{label}.validator_id must be a non-empty string")
+                    elif validator_id in validator_ids:
+                        errors.append(f"{label}.validator_id must be unique")
+                    else:
+                        validator_ids.add(validator_id)
+                resolves = validator.get("resolves_trigger_ids", [])
+                if not isinstance(resolves, list) or any(not isinstance(item, str) or not item.strip() for item in resolves):
+                    errors.append(f"{label}.resolves_trigger_ids must be a list of non-empty strings")
+                elif resolves and not validator_id:
+                    errors.append(f"{label}.resolves_trigger_ids require validator_id")
+                if resolves and validator.get("mode") == "manual":
+                    errors.append(f"{label} manual validators cannot resolve assurance triggers")
+        if not isinstance(verification.get("resource_gates", []), list):
+            errors.append("verification_spec.resource_gates must be a list")
     scope = payload.get("execution_scope", {})
     if not isinstance(scope, dict):
         errors.append("contract.execution_scope must be an object")
@@ -105,8 +153,137 @@ def managed_output_paths(payload: dict[str, Any]) -> list[str]:
     return [str(item["path"]) for item in payload.get("execution_scope", {}).get("managed_outputs", [])]
 
 
+def contract_assurance(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return normalized assurance while preserving legacy v3 behavior."""
+
+    assurance = payload.get("assurance")
+    if not isinstance(assurance, dict):
+        return _legacy_assurance()
+    errors = _validate_assurance(assurance)
+    if errors:
+        if payload.get("version") == CONTRACT_VERSION:
+            raise ValueError("; ".join(errors))
+        return _legacy_assurance()
+    return {
+        "tier": assurance["tier"],
+        "trigger_ids": list(assurance.get("trigger_ids", [])),
+        "rationale": list(assurance.get("rationale", [])),
+        "required_authorities": list(assurance.get("required_authorities", [])),
+        "resolved_trigger_ids": list(assurance.get("resolved_trigger_ids", [])),
+        "resolution_evaluation_id": assurance.get("resolution_evaluation_id"),
+    }
+
+
+def _legacy_assurance() -> dict[str, Any]:
+    return {
+        "tier": "legacy",
+        "trigger_ids": [],
+        "rationale": [],
+        "required_authorities": [],
+        "resolved_trigger_ids": [],
+        "resolution_evaluation_id": None,
+    }
+
+
+def _normalize_verification_spec(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    normalized = deepcopy(value)
+    validators = normalized.get("validators")
+    if isinstance(validators, list):
+        output: list[Any] = []
+        for validator in validators:
+            if not isinstance(validator, dict):
+                output.append(validator)
+                continue
+            item = dict(validator)
+            if "validator_id" in item and isinstance(item["validator_id"], str):
+                item["validator_id"] = item["validator_id"].strip()
+            if "resolves_trigger_ids" in item:
+                item["resolves_trigger_ids"] = _normalized_strings(
+                    item["resolves_trigger_ids"],
+                    "verification_spec.validators.resolves_trigger_ids",
+                )
+            output.append(item)
+        normalized["validators"] = output
+    return normalized
+
+
 def contract_hash(payload: dict[str, Any]) -> str:
     return _digest(payload)
+
+
+def _normalize_assurance(value: Any) -> dict[str, Any]:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise ValueError("contract.assurance must be an object")
+    tier = str(value.get("tier") or "durable_routine")
+    if tier not in ASSURANCE_TIERS:
+        raise ValueError(f"contract.assurance.tier must be one of {sorted(ASSURANCE_TIERS)}")
+    trigger_ids = _normalized_strings(value.get("trigger_ids", []), "contract.assurance.trigger_ids")
+    rationale = _normalized_strings(value.get("rationale", []), "contract.assurance.rationale")
+    if tier == "durable_routine" and not rationale:
+        rationale = ["Routine durable work with mechanically decidable acceptance."]
+    authorities = set(_normalized_strings(value.get("required_authorities", []), "contract.assurance.required_authorities"))
+    if not authorities.issubset(AUTHORITIES):
+        raise ValueError(f"contract.assurance.required_authorities must contain only {sorted(AUTHORITIES)}")
+    if tier == "high_assurance":
+        authorities.add("reviewer")
+    resolution_evaluation_id = value.get("resolution_evaluation_id")
+    if resolution_evaluation_id is not None and (not isinstance(resolution_evaluation_id, str) or not resolution_evaluation_id.strip()):
+        raise ValueError("contract.assurance.resolution_evaluation_id must be a non-empty string")
+    return {
+        "tier": tier,
+        "trigger_ids": trigger_ids,
+        "rationale": rationale,
+        "required_authorities": sorted(authorities),
+        "resolved_trigger_ids": _normalized_strings(value.get("resolved_trigger_ids", []), "contract.assurance.resolved_trigger_ids"),
+        "resolution_evaluation_id": resolution_evaluation_id,
+    }
+
+
+def _validate_assurance(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["contract.assurance must be an object"]
+    errors: list[str] = []
+    tier = value.get("tier")
+    if tier not in ASSURANCE_TIERS:
+        errors.append(f"contract.assurance.tier must be one of {sorted(ASSURANCE_TIERS)}")
+    for key in ("trigger_ids", "rationale", "required_authorities", "resolved_trigger_ids"):
+        items = value.get(key, [])
+        if not isinstance(items, list) or any(not isinstance(item, str) or not item.strip() for item in items):
+            errors.append(f"contract.assurance.{key} must be a list of non-empty strings")
+    authorities = value.get("required_authorities", [])
+    if isinstance(authorities, list) and not set(authorities).issubset(AUTHORITIES):
+        errors.append(f"contract.assurance.required_authorities must contain only {sorted(AUTHORITIES)}")
+    if tier in {"governed", "high_assurance"} and not value.get("rationale"):
+        errors.append(f"{tier} requires assurance rationale")
+    if tier == "high_assurance":
+        if "reviewer" not in authorities:
+            errors.append("high_assurance requires reviewer authority")
+        if not value.get("trigger_ids"):
+            errors.append("high_assurance requires at least one trigger_id")
+    resolution_id = value.get("resolution_evaluation_id")
+    if resolution_id is not None and (not isinstance(resolution_id, str) or not resolution_id.strip()):
+        errors.append("contract.assurance.resolution_evaluation_id must be a non-empty string")
+    resolved = value.get("resolved_trigger_ids", [])
+    if resolved and not resolution_id:
+        errors.append("resolved_trigger_ids require resolution_evaluation_id")
+    if resolution_id and not resolved:
+        errors.append("resolution_evaluation_id requires resolved_trigger_ids")
+    return errors
+
+
+def _normalized_strings(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a list")
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{label} must contain non-empty strings")
+        normalized.append(item.strip())
+    return sorted(set(normalized))
 
 
 def _normalize_ref(root: Path, item: Any, *, stable: bool, role: str | None = None) -> dict[str, Any]:

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "metaloop"
 version = "0.1.0"
-description = "Skill-only MetaLoop protocol core for Codex tasks."
+description = "Event-triggered MetaLoop outer-loop protocol for Codex tasks."
 requires-python = ">=3.12"
 dependencies = []
 

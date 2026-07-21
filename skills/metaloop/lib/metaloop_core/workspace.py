@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 from typing import Any, Iterable
@@ -120,6 +122,7 @@ class GitWorkspace:
         result = subprocess.run(
             ["git", *args],
             cwd=self.workspace,
+            env=self._base_env(),
             text=True,
             capture_output=True,
             check=False,
@@ -133,6 +136,7 @@ class GitWorkspace:
         result = subprocess.run(
             ["git", *args],
             cwd=self.workspace,
+            env=self._base_env(),
             capture_output=True,
             check=False,
         )
@@ -236,7 +240,17 @@ class GitWorkspace:
             return "UNBORN"
 
     def _index_digest(self) -> str:
-        tree = self._run("write-tree").strip()
+        real_index = Path(self._run("rev-parse", "--path-format=absolute", "--git-path", "index").strip())
+        with tempfile.TemporaryDirectory(prefix="metaloop-index-") as temporary:
+            temporary_root = Path(temporary)
+            temporary_index = temporary_root / "index"
+            if real_index.is_file():
+                shutil.copyfile(real_index, temporary_index)
+            with self._isolated_object_environment(temporary_root / "objects") as env:
+                env["GIT_INDEX_FILE"] = str(temporary_index)
+                if not real_index.is_file():
+                    self._run_with_env(env, "read-tree", "--empty")
+                tree = self._run_with_env(env, "write-tree").strip()
         return "git-tree:" + tree
 
     def _head_tree_digest(self, head: str) -> str:
@@ -254,25 +268,46 @@ class GitWorkspace:
         return "git-tree:" + self._temporary_tree(head, add_worktree=True)
 
     def _temporary_tree(self, head: str, *, add_worktree: bool) -> str:
-        descriptor, index_path = tempfile.mkstemp(prefix="metaloop-index-")
-        os.close(descriptor)
-        os.unlink(index_path)
-        env = dict(os.environ)
-        env["GIT_INDEX_FILE"] = index_path
-        try:
-            if head == "UNBORN":
-                self._run_with_env(env, "read-tree", "--empty")
-            else:
-                self._run_with_env(env, "read-tree", head)
-            if add_worktree:
-                self._run_with_env(env, "add", "-A", "--", ".")
+        with tempfile.TemporaryDirectory(prefix="metaloop-git-") as temporary:
+            index_path = Path(temporary) / "index"
+            with self._isolated_object_environment(Path(temporary) / "objects") as env:
+                env["GIT_INDEX_FILE"] = str(index_path)
                 if head == "UNBORN":
-                    self._run_with_env(env, "rm", "-r", "--cached", "--ignore-unmatch", "--", ".metaloop")
+                    self._run_with_env(env, "read-tree", "--empty")
                 else:
-                    self._run_with_env(env, "reset", "-q", head, "--", ".metaloop")
-            return self._run_with_env(env, "write-tree").strip()
-        finally:
-            Path(index_path).unlink(missing_ok=True)
+                    self._run_with_env(env, "read-tree", head)
+                if add_worktree:
+                    self._run_with_env(env, "add", "-A", "--", ".")
+                    if head == "UNBORN":
+                        self._run_with_env(env, "rm", "-r", "--cached", "--ignore-unmatch", "--", ".metaloop")
+                    else:
+                        self._run_with_env(env, "reset", "-q", head, "--", ".metaloop")
+                return self._run_with_env(env, "write-tree").strip()
+
+    def _base_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        env["GIT_OPTIONAL_LOCKS"] = "0"
+        return env
+
+    @contextmanager
+    def _isolated_object_environment(self, object_directory: Path | None = None) -> Iterable[dict[str, str]]:
+        if object_directory is not None:
+            object_directory.mkdir(parents=True, exist_ok=True)
+            yield self._object_environment(object_directory)
+            return
+        with tempfile.TemporaryDirectory(prefix="metaloop-objects-") as temporary:
+            path = Path(temporary)
+            yield self._object_environment(path)
+
+    def _object_environment(self, temporary_objects: Path) -> dict[str, str]:
+        original_objects = self._run("rev-parse", "--path-format=absolute", "--git-path", "objects").strip()
+        env = self._base_env()
+        alternates = [original_objects]
+        if env.get("GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+            alternates.append(env["GIT_ALTERNATE_OBJECT_DIRECTORIES"])
+        env["GIT_OBJECT_DIRECTORY"] = str(temporary_objects)
+        env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = os.pathsep.join(alternates)
+        return env
 
     def _status_entries(self) -> list[tuple[str, str, str | None]]:
         raw = self._run_bytes("-c", "core.quotePath=false", "status", "--porcelain=v2", "-z", "--untracked-files=all")

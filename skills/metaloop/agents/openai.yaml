@@ -1,6 +1,6 @@
 interface:
   display_name: "MetaLoop"
-  short_description: "Run risk-proportional durable Codex tasks"
-  default_prompt: "Use $metaloop. Choose the lowest adequate assurance, keep one independently resumable goal in one Task, use task begin and attempt finish for routine work, reserve full Evidence and external authority for high-risk claims, reconcile changed paths explicitly, and hide protocol mechanics by default."
+  short_description: "Run event-triggered durable Codex tasks"
+  default_prompt: "Use $metaloop. Choose the lowest adequate tier, keep routine work on task begin and attempt finish, preserve durable risk and current-state memory, and use fresh-context review only for semantic claims that executable checks cannot fully decide."
 policy:
   allow_implicit_invocation: true

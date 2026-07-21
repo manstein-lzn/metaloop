@@ -1,9 +1,9 @@
-# MetaLoop v3.1
+# MetaLoop v3.2
 
-MetaLoop v3.1 是 Codex 的 risk-proportional Git-backed durable work protocol。它把长期
+MetaLoop v3.2 是 Codex 的极小、正交、事件触发外环控制系统。它把长期
 开发中不能依赖聊天上下文的事实写成可验证状态，同时让 Git 负责机械
-workspace-change truth。普通任务只支付 continuity 和 executable-proof 成本；Evidence、
-Review 和 user authority 只在 Contract 明确要求时叠加：
+workspace-change truth。普通任务只支付 continuity 和 executable-proof 成本；高风险
+语义任务按需增加 fresh-context structured Review：
 
 ```text
 Codex / Skill -> Frame -> Work -> Reconcile -> Adapt -> Prove
@@ -15,6 +15,10 @@ SQLite        -> Project -> Task -> ContractRevision -> Attempt -> Evidence -> E
 核心分工是 **Prompt handles intelligence. Git and code handle mechanical truth. SQLite
 handles protocol truth.** MetaLoop 不是项目管理器、agent runtime、scheduler、daemon、
 watcher、transcript store、vector memory 或 agent pool。
+
+MetaLoop 默认信任 Agent 是合作的。它处理上下文压缩、遗漏、局部视野、自我误判和
+相关性盲点，不构建针对 Agent 的零信任安全边界。仓库级架构宪章见
+[AGENTS.md](AGENTS.md)。
 
 ## 运行前提
 
@@ -46,7 +50,7 @@ Project / Workspace
       Checkpoint[]        append-only semantic progress + current stamp
       Evidence[]          exact file hashes
     DecisionEvent[]
-    Evaluation[]          verification -> linear Review overlays
+    Evaluation[]          one active head: verification -> Review overlays
   RecoveryView            live-derived, fresh whenever aligned
 ```
 
@@ -69,6 +73,10 @@ Git commit 若满足父提交、materialized tree、HEAD tree、index 和 clean 
 branch switch 或 dirty post-commit 仍然 conflicted。`.git/` 和 `.metaloop/` 排除在
 generic scan 外；managed outputs 和 Evidence 始终单独重检。
 
+WorkspaceStamp 的临时 tree 使用仓库外 index 和 object directory 计算，原 object store
+只作为 alternate，并设置 `GIT_OPTIONAL_LOCKS=0`；status/recovery 不会刷新真实 index 或
+写入真实 objects。
+
 ### Progressive Design 与 Reconcile
 
 架构和长周期任务先建立完整目标模型，分离 durable invariants 与当前 scope，选择最小
@@ -82,18 +90,36 @@ generic scan 外；managed outputs 和 Evidence 始终单独重检。
 
 ```bash
 KERNEL=skills/metaloop/scripts/metaloop_kernel.py
+# One-time setup for a repository without a v3 Project.
 python3 "$KERNEL" --workspace . project init
-python3 "$KERNEL" --workspace . project status
+
+# Routine path: two lifecycle writes.
 python3 "$KERNEL" --workspace . task begin --title "<task>" --contract contract.json --plan "<plan>"
-python3 "$KERNEL" --workspace . recover show --task <task_id>
 python3 "$KERNEL" --workspace . attempt finish --attempt <attempt_id> --claimed-path src/feature.py
-python3 "$KERNEL" --workspace . project integrity
 ```
+
+Use `observe --format brief` or `recover show` only when resuming, switching
+Tasks, or resolving uncertainty. Use `project integrity` for high-assurance
+closure or suspected corruption, not as a routine heartbeat.
 
 `task begin` 组合 create/contract/select/start；`attempt finish` 组合 checkpoint、managed
 Evidence、seal、verify，并只在没有 pending authority 时 accept。所有结果仍写入同一
 SQLite ontology。多 Attempt、Contract revision、独立 Review 等高保证任务继续使用完整
 low-level commands。`recover write` 只是可选 resume annotation，不是启动前置步骤。
+
+Assurance 使用 Tier 0-3：Tier 0 零 kernel 调用，Tier 1 保持两次 lifecycle write，Tier 2
+增加机械可判定的治理证据，Tier 3 对不完整 semantic oracle 增加 fresh-context Review。
+新 Contract v1.1 记录 assurance；旧 v3 Contract v1.0 保持兼容。Tier 3 report、context、
+Contract、Attempt、Evidence 和 parent Evaluation 被绑定在同一 Review content hash 中。
+Tier 3 trigger 只能由逐 trigger 的规范化 proof 解除：带稳定
+`validator_id/resolves_trigger_ids` 的 executable validator，或 host-verified
+structured reviewer report。CLI `--context-id` 是手工、未验证标签；host 集成应提供
+`METALOOP_HOST_CONTEXT_ID` 和可选 `METALOOP_HOST_CONTEXT_PROVIDER`。
+
+Evaluation head 的下一步是 typed `next_transition`：`verify`、`review:reviewer`、
+`review:user`、`accept` 或 `start_repair_attempt`。authority 固定为 mechanical
+verification -> reviewer -> reserved user；坏链保留为历史并由同一 Task 的新 Attempt
+恢复。
 
 测试失败、reviewer 修改、Contract 修订、文档同步和 exact Git commit 本身都不会创建
 新 Task。只有独立 ownership、acceptance 或 stopping condition 才需要子 Task。
@@ -132,5 +158,5 @@ git diff --check
 ```
 
 v3 基础架构见 [docs/metaloop_final_architecture_upgrade_spec.md](docs/metaloop_final_architecture_upgrade_spec.md)，
-v3.1 alpha 优化合同见 [docs/metaloop_v3_1_alpha_optimization_spec.md](docs/metaloop_v3_1_alpha_optimization_spec.md)，
+v3.2 可靠性升级见 [docs/metaloop_v3_2_reliability_upgrade_spec.md](docs/metaloop_v3_2_reliability_upgrade_spec.md)，
 试用流程见 [docs/metaloop_v3_trial_guide.md](docs/metaloop_v3_trial_guide.md)。

@@ -101,7 +101,7 @@ def test_cli_runs_complete_git_aligned_task_and_blocks_drift(tmp_path: Path) -> 
     assert evidence["path"] == "src/result.txt"
     sealed = _json(_run(repo, "attempt", "seal", "--attempt", attempt_id, "--expected-version", "4"))
     evaluation = _json(_run(repo, "evaluate", "verify", "--attempt", sealed["attempt_id"]))
-    completed = _json(_run(repo, "evaluate", "accept", "--task", task_id, "--evaluation", evaluation["evaluation_id"], "--expected-version", "5"))
+    completed = _json(_run(repo, "evaluate", "accept", "--task", task_id, "--evaluation", evaluation["evaluation_id"], "--expected-version", "6"))
     assert completed["lifecycle_status"] == "completed"
     integrity = _json(_run(repo, "project", "integrity", "--task", task_id))
     assert integrity["passed"] is True
@@ -167,3 +167,198 @@ def test_cli_begin_and_finish_are_one_ontology_low_friction_path(tmp_path: Path)
     assert finished["evaluation"]["decision"] == "approved"
     assert finished["pending_authorities"] == []
     assert [item["path"] for item in finished["evidence"]] == ["src/result.txt"]
+
+
+def test_cli_high_assurance_review_is_structured_and_brief_status_is_compatible(tmp_path: Path, monkeypatch) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "worker-context")
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_PROVIDER", "pytest-host")
+    contract = {
+        "goal": "Verify one semantic claim.",
+        "rationale": ["Exercise fresh-context review."],
+        "constraints": ["Do not mutate project files."],
+        "non_goals": ["Do not request user authority."],
+        "acceptance_criteria": ["Mechanical proof and structured review pass."],
+        "verification_spec": {"validators": [{"type": "command", "mode": "executable", "severity": "blocking", "command": "true"}], "resource_gates": []},
+        "protocol_shape": "single_node",
+        "assurance": {
+            "tier": "high_assurance",
+            "trigger_ids": ["semantic_change_incomplete_oracle"],
+            "rationale": ["Executable checks do not cover the full semantic claim."],
+        },
+        "execution_scope": {"paths": ["src"], "stable_inputs": [], "managed_outputs": [], "change_kind": "extension", "migration_plan": None},
+    }
+    contract_path = repo / ".metaloop" / "high-contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    begun = _json(
+        _run(
+            repo,
+            "task",
+            "begin",
+            "--title",
+            "High assurance claim",
+            "--contract",
+            str(contract_path),
+            "--plan",
+            "verify and review",
+        )
+    )
+    finished = _json(_run(repo, "attempt", "finish", "--attempt", begun["attempt"]["attempt_id"]))
+    verification_id = finished["evaluation"]["evaluation_id"]
+    assert finished["pending_authorities"] == ["reviewer"]
+    assert finished["task"]["acceptance_head_id"] == verification_id
+
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "reviewer-context")
+    missing = _run(
+        repo,
+        "evaluate",
+        "review",
+        "--evaluation",
+        verification_id,
+        "--decision",
+        "approved",
+        "--reviewer",
+        "reviewer",
+    )
+    assert missing.returncode == 1
+    assert "structured report" in missing.stderr
+
+    report = {
+        "review_scope": "semantic claim and negative cases",
+        "questions_and_findings": [{"question": "Is the claim supported?", "finding": "Yes."}],
+        "counterexamples_executed": ["empty input"],
+        "blocking_findings": [],
+        "nonblocking_risks": [],
+        "decision": "approved",
+    }
+    report_path = repo / ".metaloop" / "review.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    review = _json(
+        _run(
+            repo,
+            "evaluate",
+            "review",
+            "--evaluation",
+            verification_id,
+            "--decision",
+            "approved",
+            "--reviewer",
+            "reviewer",
+            "--report-file",
+            str(report_path),
+        )
+    )
+    assert review["payload"]["review_report"]["exact_evaluation_subject"]["evaluation_id"] == verification_id
+    brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
+    assert brief["control_status"] == "acceptance_ready"
+    assert brief["pending_authorities"] == []
+    assert brief["recovery_status"] == "fresh"
+    assert brief["workspace_alignment"] == "aligned"
+    completed = _json(
+        _run(
+            repo,
+            "evaluate",
+            "accept",
+            "--task",
+            begun["task"]["task_id"],
+            "--evaluation",
+            review["evaluation_id"],
+            "--expected-version",
+            "7",
+        )
+    )
+    assert completed["lifecycle_status"] == "completed"
+
+
+def test_cli_context_id_is_manual_and_cannot_satisfy_tier_three(tmp_path: Path, monkeypatch) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "host-worker")
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_PROVIDER", "pytest-host")
+    contract = {
+        "goal": "Exercise manual context provenance.",
+        "rationale": ["Manual labels must not become host attestation."],
+        "constraints": ["Do not mutate project files."],
+        "non_goals": ["Do not accept an unverified Tier 3 Review."],
+        "acceptance_criteria": ["The kernel blocks unverified independence."],
+        "verification_spec": {
+            "validators": [{"type": "command", "mode": "executable", "command": "true"}],
+            "resource_gates": [],
+        },
+        "protocol_shape": "single_node",
+        "assurance": {
+            "tier": "high_assurance",
+            "trigger_ids": ["fresh_context_required"],
+            "rationale": ["The claim requires a decorrelated Review."],
+        },
+        "execution_scope": {"paths": ["src"], "stable_inputs": [], "managed_outputs": [], "change_kind": "extension", "migration_plan": None},
+    }
+    contract_path = repo / ".metaloop" / "manual-context-contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    begun = _json(
+        _run(
+            repo,
+            "task",
+            "begin",
+            "--title",
+            "Manual context",
+            "--contract",
+            str(contract_path),
+            "--plan",
+            "record provenance",
+            "--context-id",
+            "manual-worker",
+        )
+    )
+    assert begun["attempt"]["worker_context"]["source"] == "manual"
+    assert begun["attempt"]["worker_context"]["verified"] is False
+    finished = _json(_run(repo, "attempt", "finish", "--attempt", begun["attempt"]["attempt_id"]))
+
+    report = {
+        "review_scope": "manual provenance",
+        "questions_and_findings": [],
+        "counterexamples_executed": [],
+        "blocking_findings": [],
+        "nonblocking_risks": [],
+        "resolved_trigger_ids": [],
+        "decision": "approved",
+    }
+    report_path = repo / ".metaloop" / "manual-review.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "host-reviewer")
+    review = _json(
+        _run(
+            repo,
+            "evaluate",
+            "review",
+            "--evaluation",
+            finished["evaluation"]["evaluation_id"],
+            "--decision",
+            "approved",
+            "--reviewer",
+            "reviewer",
+            "--context-id",
+            "manual-reviewer",
+            "--report-file",
+            str(report_path),
+        )
+    )
+    assert review["payload"]["context"]["source"] == "manual"
+    assert review["payload"]["independence"] == "unverified"
+    brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
+    assert brief["control_status"] == "high_assurance_review_unverified"
+    assert brief["next_transition"] == "start_repair_attempt"
+    blocked = _run(
+        repo,
+        "evaluate",
+        "accept",
+        "--task",
+        begun["task"]["task_id"],
+        "--evaluation",
+        review["evaluation_id"],
+        "--expected-version",
+        str(review["task_state_version"]),
+    )
+    assert blocked.returncode == 1
+    assert "start_repair_attempt" in blocked.stderr

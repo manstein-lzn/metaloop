@@ -1,7 +1,8 @@
-# MetaLoop v3.1 Alpha Trial Guide
+# MetaLoop v3.2 Alpha Trial Guide
 
-MetaLoop v3.1 is a risk-proportional Git-backed durable protocol, not a scheduler
-or project manager.
+MetaLoop v3.2 is a minimal, orthogonal, event-triggered outer-loop control
+system, not a scheduler or project manager. It trusts the Agent and adds durable
+memory or a fresh observation only when an observed risk justifies it.
 
 ## Entry
 
@@ -9,13 +10,42 @@ or project manager.
 Use $metaloop. I want to <task>.
 ```
 
-The Skill chooses a proportionate Frame, locks a ContractRevision, and keeps the
-Attempt recoverable. Users do not need to name internal records.
+The Skill chooses Tier 1-3, locks a ContractRevision, and keeps the Attempt
+recoverable. Explicit invocation is at least Tier 1. Atomic Tier 0 work makes no
+kernel calls. Users do not choose tiers or name internal records.
 
 ## Scenarios
 
 - Run a routine local repair through `task begin`, one edit, and `attempt finish`.
   Record the number of explicit protocol commands and time spent on protocol work.
+- Sample atomic Tier 0 work externally and confirm MetaLoop SQLite has no Task for
+  it.
+- Run a cross-module or schema change with a complete executable oracle at Tier 2
+  and confirm reviewer authority is not added merely because the change is formal.
+- Run a semantic change with an incomplete oracle at Tier 3. Confirm mechanical
+  verification reports `mechanically_verified_pending_reviewer` and cannot be
+  presented as acceptance-ready.
+- Set `METALOOP_HOST_CONTEXT_ID` to distinct Worker and reviewer values and use a
+  structured report. Confirm the report contains exact Contract, Attempt,
+  Evidence, and parent Evaluation hashes.
+- Pass distinct manual `--context-id` values and confirm both remain
+  `manual/unverified`, Tier 3 acceptance is blocked, and the same Task can start
+  a repair Attempt.
+- Create a `needs_changes` Review, then try to review or accept its stale parent.
+  Confirm only the active Evaluation head is usable and repair stays in the same
+  Task.
+- Require reviewer and reserved user authority. Confirm the only sequence is
+  verification -> reviewer -> user -> accept, every head transition increments
+  Task state version, and extra or out-of-order Review fails closed.
+- Load a historical `needs_changes -> approved` or user-before-reviewer chain.
+  Confirm Recovery exposes `start_repair_attempt`, preserves every immutable
+  Evaluation, and the projected transition succeeds.
+- Resolve every Tier 3 trigger in a new evidence-bound ContractRevision and
+  confirm each trigger has a mapped passing validator or verified reviewer proof
+  and the old Attempt/Evaluation can no longer be accepted. Confirm a plain
+  passing `true` validator cannot resolve an unmapped trigger.
+- Snapshot `.git` metadata around `observe` and Recovery calls. Confirm index,
+  objects, refs, and lock files do not change.
 - Commit the exact accepted content and confirm Recovery remains fresh/aligned
   without a promotion Task.
 - Add uncheckpointed content before commit and confirm promotion fails closed.
@@ -38,11 +68,12 @@ Attempt recoverable. Users do not need to name internal records.
 
 ## Feedback
 
-Record the concrete Task, current state, changed paths, expected behavior,
-explicit MetaLoop command count, Task/Attempt churn, promotion Task count,
-authority waits, protocol time, and the real defects caught by gates. Include a
-reproduction for recovery gaps, reconcile friction, stable/managed reference
-burden, authority confusion, installation failures, and host safe-point behavior.
+For Tier 1-3, record the concrete Task, control status, changed paths, expected
+behavior, explicit command count, Task/Attempt churn, authority waits, protocol
+time, reviewer findings, user-first escaped findings, recovery duplication, and
+unnecessary user interruptions. Evaluate Tier 0 only through voluntary trial
+logs, Git sampling, or user study; zero-kernel work cannot be measured from
+MetaLoop SQLite.
 
 Do not request background scheduling, transcript storage, vector memory, semantic
 keyword routing, or a project-management UI without repeated evidence that the

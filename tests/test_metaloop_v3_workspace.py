@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import subprocess
 
 import pytest
@@ -25,6 +26,14 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "base")
     return repo
+
+
+def _metadata_snapshot(repo: Path) -> dict[str, str]:
+    git_dir = Path(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    snapshot: dict[str, str] = {}
+    for path in sorted(item for item in git_dir.rglob("*") if item.is_file()):
+        snapshot[path.relative_to(git_dir).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return snapshot
 
 
 def test_non_git_workspace_fails_identity_and_returns_unknown_stamp(tmp_path: Path) -> None:
@@ -167,3 +176,18 @@ def test_legacy_v3_stamp_remains_aligned_without_schema_migration(tmp_path: Path
     _git(repo, "add", "-A")
     _git(repo, "commit", "-m", "legacy stamp cannot prove promotion")
     assert compare_stamps(dirty_legacy, GitWorkspace(repo).stamp()) == "conflicted"
+
+
+def test_workspace_observation_does_not_mutate_real_git_metadata(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "staged.txt").write_text("staged\n", encoding="utf-8")
+    _git(repo, "add", "staged.txt")
+    (repo / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+    before = _metadata_snapshot(repo)
+
+    stamp = GitWorkspace(repo).stamp()
+
+    after = _metadata_snapshot(repo)
+    assert stamp.unknown_reason is None
+    assert before == after
+    assert not any(path.endswith(".lock") for path in after)

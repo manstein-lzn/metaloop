@@ -31,9 +31,12 @@ def test_portable_kernel_is_a_thin_standard_library_bootstrap() -> None:
 def test_active_skill_and_docs_describe_v3_only() -> None:
     skill = (ROOT / "skills" / "metaloop" / "SKILL.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "MetaLoop v3" in skill
-    assert all(word in skill for word in ["Frame", "Work", "Reconcile", "Adapt", "Prove", "WorkspaceStamp"])
-    assert "MetaLoop v3" in readme
+    charter = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "MetaLoop v3.2" in skill
+    assert all(word in skill for word in ["Frame", "Work", "Reconcile", "Adapt", "Prove", "WorkspaceStamp", "atomic_direct", "high_assurance", "fresh-context"])
+    assert "MetaLoop v3.2" in readme
+    assert "MetaLoop 是一个极小、正交、事件触发的外环控制系统" in charter
+    assert "默认信任 Agent" in charter
     for removed in ["Mission Capsule", "migrate-legacy", "legacy_unbound", "V1 compatibility", "V2 compatibility"]:
         assert removed not in skill
     assert not (ROOT / "skills" / "metaloop" / "references" / "legacy_v1_compatibility.md").exists()

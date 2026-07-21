@@ -1,6 +1,6 @@
-"""MetaLoop v3.1 canonical Git-backed durable protocol APIs."""
+"""MetaLoop v3.2 canonical Git-backed durable protocol APIs."""
 
-from metaloop_core.contracts import contract_hash, managed_output_paths, normalize_contract, validate_contract, verify_stable_inputs
+from metaloop_core.contracts import contract_assurance, contract_hash, managed_output_paths, normalize_contract, validate_contract, verify_stable_inputs
 from metaloop_core.decisions import validate_decision, validate_event_type
 from metaloop_core.durable import ConflictError, DuplicateAttemptError, DurableError, DurableStore, InvalidTransitionError, NotFoundError
 from metaloop_core.host import safe_point
@@ -22,6 +22,7 @@ __all__ = [
     "alignment_reason",
     "changed_paths_between",
     "compare_stamps",
+    "contract_assurance",
     "contract_hash",
     "managed_output_paths",
     "normalize_contract",

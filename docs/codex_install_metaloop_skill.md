@@ -1,15 +1,15 @@
-# Install MetaLoop v3.1 Codex Skill
+# Install MetaLoop v3.2 Codex Skill
 
-MetaLoop v3.1 is self-contained. Install only `skills/metaloop/`; no Python package
+MetaLoop v3.2 is self-contained. Install only `skills/metaloop/`; no Python package
 installation is required.
 
 ## Codex Install Request
 
 ```text
-Install the complete MetaLoop v3.1 Skill directory from skills/metaloop into
+Install the complete MetaLoop v3.2 Skill directory from skills/metaloop into
 ${CODEX_HOME:-$HOME/.codex}/skills/metaloop. Replace the existing directory,
 remove Python caches, verify the thin kernel and vendored-core parity, then run
-a complete v3.1 smoke test in a temporary local Git repository. Do not modify the
+a complete v3.2 smoke test in a temporary local Git repository. Do not modify the
 current project except for the Skill destination.
 ```
 

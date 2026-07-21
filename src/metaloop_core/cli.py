@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
 
 from metaloop_core.durable import DurableError, DurableStore
-from metaloop_core.schemas import DECISIONS, DECISION_TYPES, TASK_STATES
+from metaloop_core.schemas import ASSURANCE_TIERS, DECISIONS, DECISION_TYPES, PROTOCOL_VERSION, TASK_STATES
 from metaloop_core.workspace import GitWorkspaceError
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="MetaLoop v3.1 risk-proportional durable work protocol")
+    parser = argparse.ArgumentParser(description=f"MetaLoop v{PROTOCOL_VERSION} risk-proportional durable work protocol")
     parser.add_argument("--workspace", default=".", help="Git worktree governed by MetaLoop.")
     commands = parser.add_subparsers(dest="command", required=True)
     _project_parser(commands)
@@ -65,6 +66,7 @@ def _task_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) 
     begin.add_argument("--input-json", default="{}")
     begin.add_argument("--input-file")
     begin.add_argument("--actor", default="codex")
+    begin.add_argument("--context-id", help="Manually supplied context label; recorded as unverified.")
     begin.add_argument("--parent-task")
     begin.add_argument("--depends-on", action="append", default=[])
     begin.add_argument("--change-kind", choices=["repair", "extension", "redesign"])
@@ -72,6 +74,7 @@ def _task_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) 
     begin.add_argument("--managed-output", action="append", default=[], metavar="ROLE=PATH")
     begin.add_argument("--allowed-path", action="append", default=[])
     begin.add_argument("--migration-plan")
+    _assurance_arguments(begin)
     sub.add_parser("list")
     show = sub.add_parser("show")
     show.add_argument("--task", required=True)
@@ -87,6 +90,7 @@ def _task_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) 
     contract.add_argument("--managed-output", action="append", default=[], metavar="ROLE=PATH")
     contract.add_argument("--allowed-path", action="append", default=[])
     contract.add_argument("--migration-plan")
+    _assurance_arguments(contract)
     transition = sub.add_parser("transition")
     transition.add_argument("--task", required=True)
     transition.add_argument("--expected-version", required=True, type=int)
@@ -123,6 +127,7 @@ def _attempt_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser
     start.add_argument("--input-json", default="{}")
     start.add_argument("--input-file")
     start.add_argument("--actor", default="codex")
+    start.add_argument("--context-id", help="Manually supplied context label; recorded as unverified.")
     start.add_argument("--retry-of")
     start.add_argument("--retry-reason", default="")
     checkpoint = sub.add_parser("record-checkpoint")
@@ -173,6 +178,10 @@ def _evaluation_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     review.add_argument("--decision", choices=["approved", "rejected", "needs_changes"], required=True)
     review.add_argument("--reviewer", required=True)
     review.add_argument("--authority", choices=["reviewer", "user"], default="reviewer")
+    review.add_argument("--context-id", help="Manually supplied reviewer context label; recorded as unverified.")
+    report = review.add_mutually_exclusive_group()
+    report.add_argument("--report-file")
+    report.add_argument("--report-json")
     accept = sub.add_parser("accept")
     accept.add_argument("--task", required=True)
     accept.add_argument("--evaluation", required=True)
@@ -193,6 +202,7 @@ def _recovery_parser(commands: argparse._SubParsersAction[argparse.ArgumentParse
 
 
 def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
+    host_context = _host_context_from_environment()
     if args.command == "project":
         if args.project_command == "status":
             return _status(store)
@@ -219,6 +229,8 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
                 plan=args.plan,
                 input_snapshot=inputs,
                 actor=args.actor,
+                context_id=args.context_id,
+                host_context=host_context,
                 parent_task_id=args.parent_task,
                 depends_on=args.depends_on,
             )
@@ -247,7 +259,7 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
     if args.command == "attempt":
         if args.attempt_command == "start":
             inputs = _read_object(args.input_file) if args.input_file else json.loads(args.input_json)
-            return store.start_attempt(args.task, expected_version=args.expected_version, plan=args.plan, input_snapshot=inputs, actor=args.actor, retry_of=args.retry_of, retry_reason=args.retry_reason)
+            return store.start_attempt(args.task, expected_version=args.expected_version, plan=args.plan, input_snapshot=inputs, actor=args.actor, context_id=args.context_id, host_context=host_context, retry_of=args.retry_of, retry_reason=args.retry_reason)
         if args.attempt_command == "record-checkpoint":
             return store.record_checkpoint(args.attempt, _checkpoint_payload(args), expected_version=args.expected_version)
         if args.attempt_command == "evidence":
@@ -268,7 +280,8 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
         if args.evaluate_command == "verify":
             return store.evaluate_verify(args.attempt)
         if args.evaluate_command == "review":
-            return store.review(args.evaluation, decision=args.decision, reviewer=args.reviewer, authority=args.authority)
+            report = _read_object(args.report_file) if args.report_file else json.loads(args.report_json) if args.report_json else None
+            return store.review(args.evaluation, decision=args.decision, reviewer=args.reviewer, authority=args.authority, report=report, context_id=args.context_id, host_context=host_context)
         if args.evaluate_command == "accept":
             return store.accept(args.task, args.evaluation, expected_version=args.expected_version)
         if args.evaluate_command == "show":
@@ -298,7 +311,24 @@ def _status(store: DurableStore, *, full: bool = False, selected_task: str | Non
 def _task_summary(store: DurableStore, task_id: str) -> dict[str, Any]:
     task = store.task(task_id)
     unresolved = [dep for dep in task["depends_on"] if store.task(dep)["lifecycle_status"] != "completed"]
-    return {**task, "unresolved_dependencies": unresolved, "readiness": "completed" if task["lifecycle_status"] == "completed" else "blocked" if unresolved else "ready", "workspace_alignment": store.recovery(task_id)["workspace_alignment"]}
+    acceptance = store.acceptance_status(task_id)
+    recovery = store.recovery(task_id)
+    return {
+        **task,
+        "active_evaluation_head_id": task.get("acceptance_head_id"),
+        "unresolved_dependencies": unresolved,
+        "readiness": "completed" if task["lifecycle_status"] == "completed" else "blocked" if unresolved else "ready",
+        "control_status": "blocked" if unresolved else acceptance["status"],
+        "pending_authorities": acceptance["pending_authorities"],
+        "authority_sequence": acceptance["authority_sequence"],
+        "next_transition": "none" if unresolved else recovery["next_transition"],
+        "next_action": "complete dependencies" if unresolved else recovery["next_action"],
+        "blocker": "Task dependencies are incomplete." if unresolved else recovery["blocker"],
+        "resolved_trigger_proofs": acceptance["resolved_trigger_proofs"],
+        "assurance": acceptance["assurance"],
+        "recovery_status": recovery["status"],
+        "workspace_alignment": recovery["workspace_alignment"],
+    }
 
 
 def _task_detail(store: DurableStore, task_id: str) -> dict[str, Any]:
@@ -319,9 +349,27 @@ def _brief(status: dict[str, Any]) -> dict[str, Any]:
         "task_count": len(status["tasks"]),
         "selected_task_id": selected.get("task_id"),
         "task_status": selected.get("lifecycle_status"),
-        "recovery_status": recovery.get("status"),
-        "workspace_alignment": recovery.get("workspace_alignment"),
+        "recovery_status": recovery.get("status") or selected.get("recovery_status"),
+        "workspace_alignment": recovery.get("workspace_alignment") or selected.get("workspace_alignment"),
         "integrity": status["integrity"]["passed"],
+        "control_status": selected.get("control_status"),
+        "pending_authorities": selected.get("pending_authorities", []),
+        "authority_sequence": selected.get("authority_sequence", []),
+        "next_transition": selected.get("next_transition"),
+        "next_action": selected.get("next_action"),
+        "blocker": selected.get("blocker"),
+        "resolved_trigger_proofs": selected.get("resolved_trigger_proofs", {}),
+        "assurance": selected.get("assurance"),
+    }
+
+
+def _host_context_from_environment() -> dict[str, str] | None:
+    context_id = os.environ.get("METALOOP_HOST_CONTEXT_ID")
+    if not context_id:
+        return None
+    return {
+        "context_id": context_id,
+        "provider": os.environ.get("METALOOP_HOST_CONTEXT_PROVIDER") or "host-environment",
     }
 
 
@@ -337,6 +385,20 @@ def _apply_scope_arguments(payload: dict[str, Any], args: argparse.Namespace) ->
     scope["paths"].extend(args.allowed_path)
     if args.migration_plan:
         scope["migration_plan"] = {"role": "migration_plan", "path": args.migration_plan}
+    if args.assurance_tier or args.trigger_id or args.assurance_rationale:
+        assurance = payload.setdefault("assurance", {})
+        if args.assurance_tier:
+            assurance["tier"] = args.assurance_tier
+        if args.trigger_id:
+            assurance["trigger_ids"] = args.trigger_id
+        if args.assurance_rationale:
+            assurance["rationale"] = args.assurance_rationale
+
+
+def _assurance_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--assurance-tier", choices=sorted(ASSURANCE_TIERS))
+    parser.add_argument("--trigger-id", action="append", default=[])
+    parser.add_argument("--assurance-rationale", action="append", default=[])
 
 
 def _role_path(value: str) -> dict[str, str]:
