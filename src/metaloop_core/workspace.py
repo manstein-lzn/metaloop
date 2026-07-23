@@ -287,6 +287,10 @@ class GitWorkspace:
     def _base_env(self) -> dict[str, str]:
         env = dict(os.environ)
         env["GIT_OPTIONAL_LOCKS"] = "0"
+        # Pin git output to a deterministic C locale so diagnostics and the
+        # actionable errors we surface do not depend on the host LC_ALL.
+        env["LC_ALL"] = "C"
+        env["LANG"] = "C"
         return env
 
     @contextmanager
