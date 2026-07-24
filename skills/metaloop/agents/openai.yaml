@@ -1,6 +1,4 @@
 interface:
   display_name: "MetaLoop"
-  short_description: "Run event-triggered durable Codex tasks"
-  default_prompt: "Use $metaloop. Choose the lowest adequate tier, keep routine work on task begin and attempt finish, preserve durable risk and current-state memory, and use fresh-context review only for semantic claims that executable checks cannot fully decide."
-policy:
-  allow_implicit_invocation: true
+  short_description: "Keep long Codex work recoverable with minimal overhead"
+  default_prompt: "Use $metaloop to keep this resumable task implementation-first, finish it through the two-command path, and add review only if the final claim truly requires it."

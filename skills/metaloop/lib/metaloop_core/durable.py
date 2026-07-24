@@ -73,7 +73,7 @@ def utc_now() -> str:
 
 
 class DurableStore:
-    """Canonical v3 SQLite store with compatible v3.2 protocol semantics."""
+    """Canonical v3 SQLite store with compatible v3.4 protocol semantics."""
 
     def __init__(self, workspace: str | Path = ".", *, initialize: bool = False) -> None:
         requested = Path(workspace).expanduser().resolve()
@@ -194,6 +194,17 @@ class DurableStore:
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
+        if self.conn.in_transaction:
+            savepoint = f"metaloop_{uuid.uuid4().hex}"
+            self.conn.execute(f"SAVEPOINT {savepoint}")
+            try:
+                yield self.conn
+                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except Exception:
+                self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
+            return
         try:
             self.conn.execute("BEGIN IMMEDIATE")
             yield self.conn
@@ -262,22 +273,28 @@ class DurableStore:
         input_snapshot: dict[str, Any] | None = None,
         actor: str = "codex",
         context_id: str | None = None,
-        host_context: dict[str, Any] | None = None,
         parent_task_id: str | None = None,
         depends_on: list[str] | None = None,
     ) -> dict[str, Any]:
-        task = self.create_task(title, parent_task_id=parent_task_id, depends_on=depends_on)
-        locked = self.lock_contract(task["task_id"], contract, expected_version=1)
-        self.set_default(task["task_id"])
-        attempt = self.start_attempt(
-            task["task_id"],
-            expected_version=2,
-            plan=plan,
-            input_snapshot=input_snapshot or {},
-            actor=actor,
-            context_id=context_id,
-            host_context=host_context,
-        )
+        normalized = normalize_contract(self.workspace, contract)
+        errors = validate_contract(normalized)
+        if errors:
+            raise ValueError("; ".join(errors))
+        stable_errors = verify_stable_inputs(self.workspace, normalized)
+        if stable_errors:
+            raise DurableError("; ".join(stable_errors))
+        with self.transaction():
+            task = self.create_task(title, parent_task_id=parent_task_id, depends_on=depends_on)
+            locked = self.lock_contract(task["task_id"], normalized, expected_version=1)
+            self.set_default(task["task_id"])
+            attempt = self.start_attempt(
+                task["task_id"],
+                expected_version=2,
+                plan=plan,
+                input_snapshot=input_snapshot or {},
+                actor=actor,
+                context_id=context_id,
+            )
         return {
             "task": self.task(task["task_id"]),
             "contract": locked,
@@ -434,20 +451,6 @@ class DurableStore:
             return _projection("evaluation_chain_invalid", assurance=assurance, authority_sequence=sequence, next_transition="start_repair_attempt", next_action="start a repair Attempt", blocker="verification authority plan omits current assurance requirements")
         pending = sequence[len(actual) :]
         proofs = self.resolved_trigger_proofs(chain)
-        reviewer_reviews = [item for item in reviews if item["authority"] == "reviewer"]
-        if assurance["effective_tier"] == "high_assurance" and reviewer_reviews and not all(
-            self._review_has_verified_independence(item, attempt) and item["payload"].get("review_report")
-            for item in reviewer_reviews
-        ):
-            return _projection(
-                "high_assurance_review_unverified",
-                assurance=assurance,
-                authority_sequence=sequence,
-                resolved_trigger_proofs=proofs,
-                next_transition="start_repair_attempt",
-                next_action="start a repair Attempt and obtain a host-attested fresh-context Review",
-                blocker="the Tier 3 reviewer context is not host-verified and independent",
-            )
         if pending:
             authority = pending[0]
             status = "mechanically_verified_pending_reviewer" if authority == "reviewer" else "reviewed_ready_for_user_acceptance"
@@ -462,30 +465,13 @@ class DurableStore:
         if not chain or chain[0]["kind"] != "verification" or chain[0]["decision"] != "approved":
             return {}
         proofs: dict[str, set[str]] = {}
-        root = chain[0]
-        for result in root["payload"].get("validator_results", []):
-            if not isinstance(result, dict) or result.get("passed") is not True:
-                continue
-            validator_id = result.get("validator_id")
-            trigger_ids = result.get("resolves_trigger_ids", [])
-            if not isinstance(validator_id, str) or not validator_id or not isinstance(trigger_ids, list):
-                continue
-            for trigger_id in trigger_ids:
-                if isinstance(trigger_id, str) and trigger_id:
-                    proofs.setdefault(trigger_id, set()).add(f"validator:{validator_id}")
-        try:
-            attempt = self.attempt(root["subject_id"])
-        except DurableError:
-            attempt = None
         for review in chain[1:]:
             report = review["payload"].get("review_report")
             if (
-                attempt is None
-                or review["kind"] != "review"
+                review["kind"] != "review"
                 or review["authority"] != "reviewer"
                 or review["decision"] != "approved"
                 or not isinstance(report, dict)
-                or not self._review_has_verified_independence(review, attempt)
             ):
                 continue
             for trigger_id in report.get("resolved_trigger_ids", []):
@@ -536,7 +522,6 @@ class DurableStore:
         input_snapshot: dict[str, Any],
         actor: str = "codex",
         context_id: str | None = None,
-        host_context: dict[str, Any] | None = None,
         retry_of: str | None = None,
         retry_reason: str = "",
     ) -> dict[str, Any]:
@@ -547,9 +532,6 @@ class DurableStore:
             raise InvalidTransitionError("Task is not open")
         if not task.get("contract_head_id"):
             raise InvalidTransitionError("Task has no locked ContractRevision")
-        projection = self.control_projection(task_id)
-        if projection["next_transition"] not in {"none", "start_repair_attempt"}:
-            raise InvalidTransitionError(f"Task control state requires {projection['next_transition']}")
         if task.get("active_attempt_id"):
             raise InvalidTransitionError("Task already has an active Attempt")
         unresolved = [dep for dep in task["depends_on"] if self.task(dep)["lifecycle_status"] != "completed"]
@@ -561,11 +543,43 @@ class DurableStore:
         stable_errors = verify_stable_inputs(self.workspace, contract["content"])
         if stable_errors:
             raise DurableError("; ".join(stable_errors))
-        if self.recovery(task_id)["status"] != "fresh":
-            raise InvalidTransitionError("RecoveryView must be fresh before Attempt start")
+        recovery = self.recovery(task_id)
+        projection = self.control_projection(task_id)
+        latest = self.latest_attempt(task_id)
+        source_attempt: dict[str, Any] | None = None
+        if retry_of:
+            source_attempt = self.attempt(retry_of)
+            if source_attempt["task_id"] != task_id:
+                raise ConflictError("carried-forward Attempt belongs to another Task")
+            if latest is None or latest["attempt_id"] != retry_of:
+                raise ConflictError("carried-forward provenance requires the latest Attempt")
+            if source_attempt["status"] not in {"aborted", "sealed"}:
+                raise InvalidTransitionError("carried-forward provenance requires a terminal Attempt")
+        elif latest and latest["status"] in {"aborted", "sealed"}:
+            source_attempt = latest
+            retry_of = latest["attempt_id"]
+            retry_reason = retry_reason.strip() or "carry forward the latest same-Task workspace"
+        can_supersede_stale_candidate = bool(
+            source_attempt and recovery["workspace_alignment"] == "ahead"
+        )
+        if projection["next_transition"] not in {"none", "start_repair_attempt"} and not can_supersede_stale_candidate:
+            raise InvalidTransitionError(f"Task control state requires {projection['next_transition']}")
+        if recovery["status"] != "fresh":
+            if source_attempt is None or recovery["workspace_alignment"] not in {"ahead", "aligned"}:
+                raise InvalidTransitionError("RecoveryView must be fresh before Attempt start")
         stamp = GitWorkspace(self.workspace).stamp()
         if stamp.unknown_reason:
             raise DurableError(f"workspace state unknown: {stamp.unknown_reason}")
+        carried_forward = self._carried_forward_provenance(source_attempt, stamp) if source_attempt else None
+        if carried_forward:
+            allowed_paths = contract["content"].get("execution_scope", {}).get("paths", [])
+            outside_scope = sorted(
+                item["path"] for item in carried_forward["paths"] if not path_allowed(item["path"], allowed_paths)
+            )
+            if outside_scope:
+                raise ConflictError(
+                    "carried-forward paths fall outside current execution_scope.paths: " + ", ".join(outside_scope)
+                )
         plan_hash = _digest(plan)
         input_hash = _digest(input_snapshot)
         fingerprint = _digest({"contract": contract["content_hash"], "plan": plan_hash, "input": input_hash})
@@ -579,7 +593,20 @@ class DurableStore:
                 "INSERT INTO attempts(attempt_id,task_id,contract_id,schema,status,plan,plan_hash,input_json,input_hash,fingerprint,baseline_stamp_json,baseline_stamp_hash,started_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (attempt_id, task_id, contract["contract_id"], ATTEMPT_SCHEMA, "open", plan, plan_hash, _json(input_snapshot), input_hash, fingerprint, _json(stamp.to_dict()), stamp.content_hash(), now),
             )
-            self._append_record(conn, attempt_id, "attempt_started", {"actor": actor, "context": _context_provenance(context_id, host_context), "plan": plan, "retry_of": retry_of, "retry_reason": retry_reason, "baseline_stamp": stamp.to_dict()})
+            self._append_record(
+                conn,
+                attempt_id,
+                "attempt_started",
+                {
+                    "actor": actor,
+                    "context_id": context_id,
+                    "plan": plan,
+                    "retry_of": retry_of,
+                    "retry_reason": retry_reason,
+                    "carried_forward": carried_forward,
+                    "baseline_stamp": stamp.to_dict(),
+                },
+            )
             if task.get("acceptance_head_id") is None:
                 cursor = conn.execute(
                     "UPDATE tasks SET active_attempt_id=?,acceptance_head_id=NULL,state_version=state_version+1,updated_at=? WHERE task_id=? AND state_version=? AND acceptance_head_id IS NULL",
@@ -629,6 +656,7 @@ class DurableStore:
         decision = str(payload.get("decision") or "")
         if decision and decision not in DECISIONS:
             raise ValueError("checkpoint decision must be explicit and valid")
+        external_ref = _normalize_external_ref(payload.get("external_ref"))
         evidence_ids = {item["evidence_id"] for item in attempt["evidence"]}
         missing_evidence = sorted(set(payload.get("evidence_refs", [])) - evidence_ids)
         if missing_evidence:
@@ -646,6 +674,10 @@ class DurableStore:
         payload["schema"] = CHECKPOINT_SCHEMA
         payload["workspace_stamp"] = current.to_dict()
         payload["workspace_alignment"] = "aligned"
+        if external_ref is not None:
+            payload["external_ref"] = external_ref
+        else:
+            payload.pop("external_ref", None)
         with self.transaction() as conn:
             record = self._append_record(conn, attempt_id, "checkpoint", payload)
             conn.execute("UPDATE attempts SET latest_checkpoint_hash=? WHERE attempt_id=?", (record["content_hash"], attempt_id))
@@ -663,54 +695,78 @@ class DurableStore:
         evidence_paths: list[str] | None = None,
     ) -> dict[str, Any]:
         attempt = self.attempt(attempt_id)
-        if attempt["status"] != "open":
-            raise InvalidTransitionError("attempt finish requires an open Attempt")
         task = self.task(attempt["task_id"])
-        contract = self.contract(task["task_id"])["content"]
-        current = GitWorkspace(self.workspace).stamp()
-        previous_payload = self._latest_checkpoint_payload(attempt_id)
-        previous = (
-            WorkspaceStamp.from_dict(previous_payload["workspace_stamp"])
-            if previous_payload and previous_payload.get("workspace_stamp")
-            else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
-        )
-        delta = changed_paths_between(previous, current)
-        payload = dict(checkpoint_payload or {})
-        declared_outputs = set(managed_output_paths(contract))
-        claimed = set(str(item) for item in payload.get("claimed_paths", []))
-        claimed.update(path for path in delta if path in declared_outputs)
-        payload.setdefault("completed", [])
-        payload.setdefault("observations", [])
-        payload.setdefault("diagnosis", "")
-        payload.setdefault("decision", "complete")
-        payload.setdefault("next_plan", "verify and accept the exact Attempt")
-        payload["claimed_paths"] = sorted(claimed)
-        payload.setdefault("deferred_paths", [])
-        payload.setdefault("assigned_paths", [])
-        payload.setdefault("evidence_refs", [])
-        checkpoint = self.record_checkpoint(attempt_id, payload, expected_version=task["state_version"])
+        contract_record = self.contract(task["task_id"])
+        if attempt["contract_id"] != contract_record["contract_id"]:
+            raise ConflictError("attempt finish cannot use a superseded ContractRevision")
+        if attempt["status"] == "aborted":
+            raise InvalidTransitionError("attempt finish cannot resume an aborted Attempt")
 
-        bound_evidence = {item["path"]: item for item in self.evidence(attempt_id)}
-        evidence = []
-        for path in sorted(declared_outputs | set(evidence_paths or [])):
-            item = bound_evidence.get(path) or self.add_evidence(attempt_id, path)
-            evidence.append(item)
+        checkpoint = self._latest_checkpoint_record(attempt_id)
+        declared_outputs = set(managed_output_paths(contract_record["content"]))
+        if attempt["status"] == "open":
+            current = GitWorkspace(self.workspace).stamp()
+            if current.unknown_reason:
+                raise DurableError(f"workspace state unknown: {current.unknown_reason}")
+            previous_payload = self._latest_checkpoint_payload(attempt_id)
+            previous = (
+                WorkspaceStamp.from_dict(previous_payload["workspace_stamp"])
+                if previous_payload and previous_payload.get("workspace_stamp")
+                else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
+            )
+            delta = changed_paths_between(previous, current)
+            payload = dict(checkpoint_payload or {})
+            deferred = _path_set(payload.get("deferred_paths", []))
+            assigned = _path_set(payload.get("assigned_paths", []))
+            claimed = set(str(item) for item in payload.get("claimed_paths", []))
+            claimed.update(set(delta) - deferred - assigned)
+            payload.setdefault("completed", [])
+            payload.setdefault("observations", [])
+            payload.setdefault("diagnosis", "")
+            payload.setdefault("decision", "complete")
+            payload.setdefault("next_plan", "verify and accept the exact Attempt")
+            payload["claimed_paths"] = sorted(claimed)
+            payload.setdefault("deferred_paths", [])
+            payload.setdefault("assigned_paths", [])
+            payload.setdefault("evidence_refs", [])
+            if delta or checkpoint is None:
+                checkpoint = self.record_checkpoint(attempt_id, payload, expected_version=task["state_version"])
+
+            bound_evidence = {item["path"]: item for item in self.evidence(attempt_id)}
+            for path in sorted(declared_outputs | set(evidence_paths or [])):
+                if path not in bound_evidence:
+                    bound_evidence[path] = self.add_evidence(attempt_id, path)
+
+            task = self.task(task["task_id"])
+            attempt = self.seal_attempt(attempt_id, expected_version=task["state_version"])
+
+        evaluation = self._verification_for_attempt(attempt_id)
+        if evaluation is None:
+            evaluation = self.evaluate_verify(attempt_id)
 
         task = self.task(task["task_id"])
-        sealed = self.seal_attempt(attempt_id, expected_version=task["state_version"])
-        evaluation = self.evaluate_verify(attempt_id)
-        pending = list(evaluation["payload"].get("required_authorities", []))
-        accepted = None
-        if evaluation["decision"] == "approved" and not pending:
-            task = self.task(task["task_id"])
-            accepted = self.accept(task["task_id"], evaluation["evaluation_id"], expected_version=task["state_version"])
+        projection = self.control_projection(task["task_id"])
+        if projection["next_transition"] == "accept":
+            head_id = task.get("acceptance_head_id")
+            if not head_id:
+                raise DurableError("acceptance-ready Task has no active Evaluation head")
+            task = self.accept(task["task_id"], head_id, expected_version=task["state_version"])
+            projection = self.control_projection(task["task_id"])
+
+        active = self.evaluation(task["acceptance_head_id"]) if task.get("acceptance_head_id") else None
         return {
             "checkpoint": checkpoint,
-            "evidence": evidence,
-            "attempt": sealed,
+            "evidence": self.evidence(attempt_id),
+            "attempt": self.attempt(attempt_id),
             "evaluation": evaluation,
-            "task": accepted or self.task(task["task_id"]),
-            "pending_authorities": pending,
+            "active_evaluation": active,
+            "task": task,
+            "pending_authorities": projection["pending_authorities"],
+            "next_transition": projection["next_transition"],
+            "next_action": projection["next_action"],
+            "active_chain": self.active_evaluation_chain(task["task_id"]),
+            "review_handoff": self.review_handoff(task["task_id"]),
+            "protocol_activity": self.protocol_activity(task["task_id"]),
         }
 
     def add_evidence(self, attempt_id: str, path: str, *, description: str = "") -> dict[str, Any]:
@@ -834,7 +890,6 @@ class DurableStore:
         authority: str = "reviewer",
         report: dict[str, Any] | None = None,
         context_id: str | None = None,
-        host_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if decision not in EVALUATION_DECISIONS:
             raise ValueError("invalid review decision")
@@ -860,24 +915,15 @@ class DurableStore:
             raise ConflictError("Review target belongs to a superseded ContractRevision")
         self._assert_aligned(attempt, contract_record["content"])
         assurance = self.assurance_state(attempt["task_id"])
-        worker = attempt["records"][0]["payload"]
-        worker_context = worker.get("context") or _unavailable_context()
-        reviewer_context = _context_provenance(context_id, host_context)
-        independent = _contexts_are_verified_and_distinct(worker_context, reviewer_context)
         if authority == "reviewer" and assurance["effective_tier"] == "high_assurance":
             if report is None:
                 raise ValueError("high_assurance Review requires a structured report")
-            if _is_verified_host_context(worker_context) and _is_verified_host_context(reviewer_context) and not independent:
-                raise ConflictError("high_assurance Review requires a distinct host context identity")
-        elif authority == "reviewer" and not independent and str(worker.get("actor") or "") == reviewer:
-            raise ConflictError("reviewer must use a distinct identity or execution context")
         normalized_report = _normalize_review_report(report, decision=decision, evaluation=evaluation, attempt=attempt, contract=contract_record) if report is not None else None
         payload = {
             "reviewer": reviewer,
             "authority": authority,
             "decision": decision,
-            "context": reviewer_context,
-            "independence": "verified" if independent else "unverified",
+            "context_id": context_id,
             "review_report": normalized_report,
         }
         return self._insert_evaluation(
@@ -930,7 +976,7 @@ class DurableStore:
         assurance = self.assurance_state(task_id)
         if assurance["effective_tier"] == "high_assurance":
             reviewer_reviews = [item for item in chain[1:] if item["authority"] == "reviewer"]
-            if not any(self._review_has_verified_independence(item, attempt) and item["payload"].get("review_report") for item in reviewer_reviews):
+            if not any(item["payload"].get("review_report") for item in reviewer_reviews):
                 raise InvalidTransitionError("high_assurance acceptance requires a structured fresh-context Review")
         self._assert_aligned(attempt, contract_record["content"])
         with self.transaction() as conn:
@@ -999,47 +1045,67 @@ class DurableStore:
         row = self.conn.execute("SELECT * FROM recovery_views WHERE task_id=?", (task_id,)).fetchone()
         status = "fresh" if alignment == "aligned" else "stale"
         active_head = self.evaluation(task["acceptance_head_id"]) if task.get("acceptance_head_id") else None
+        active_chain = self.active_evaluation_chain(task_id)
         acceptance = self.acceptance_status(task_id)
         next_transition = acceptance["next_transition"]
         next_action = acceptance["next_action"]
         blocker = acceptance["blocker"]
-        if alignment != "aligned" and not task.get("active_attempt_id"):
+        if alignment != "aligned" and not task.get("active_attempt_id") and task["lifecycle_status"] != "completed":
             next_transition = "none"
             next_action = "reconcile workspace state before the next lifecycle transition"
             blocker = f"workspace alignment is {alignment}"
-        return {"schema": RECOVERY_SCHEMA, "task_id": task_id, "status": status, "source_hash": source, "workspace_alignment": alignment, "workspace_transition": transition, "workspace_stamp": current.to_dict(), "changed_paths_since_checkpoint": changed_paths_between(previous, current), "resume_markdown": row["resume_markdown"] if row else "", "task": task, "contract": self.contract(task_id) if task.get("contract_head_id") else None, "assurance": self.assurance_state(task_id), "acceptance": acceptance, "next_transition": next_transition, "next_action": next_action, "blocker": blocker, "active_attempt": attempt, "latest_decisions": self.decisions(task_id), "active_evaluation_head": active_head, "acceptance_head_id": task.get("acceptance_head_id")}
+        return {"schema": RECOVERY_SCHEMA, "task_id": task_id, "status": status, "source_hash": source, "workspace_alignment": alignment, "workspace_transition": transition, "workspace_stamp": current.to_dict(), "changed_paths_since_checkpoint": changed_paths_between(previous, current), "resume_markdown": row["resume_markdown"] if row else "", "task": task, "contract": self.contract(task_id) if task.get("contract_head_id") else None, "assurance": self.assurance_state(task_id), "acceptance": acceptance, "next_transition": next_transition, "next_action": next_action, "blocker": blocker, "active_attempt": attempt, "latest_decisions": self.decisions(task_id), "active_evaluation_head": active_head, "active_chain": active_chain, "review_handoff": self.review_handoff(task_id), "external_ref": self.external_ref(task_id), "acceptance_head_id": task.get("acceptance_head_id")}
 
     def integrity(self, task_id: str | None = None) -> dict[str, Any]:
-        errors: list[str] = []
+        violations: list[str] = []
+        reconciliation_required = False
+        explicit_task = task_id is not None
         project = self.project()
         identity = GitWorkspace(self.workspace).stamp()
         if identity.unknown_reason:
-            errors.append("workspace stamp unknown: " + identity.unknown_reason)
+            violations.append("workspace stamp unknown: " + identity.unknown_reason)
         if identity.repository_root != project["repository_root"] or identity.worktree_path != project["worktree_path"]:
-            errors.append("Project Git identity drift")
+            violations.append("Project Git identity drift")
         selected = task_id or project.get("default_task_id")
+        workspace_alignment = "aligned"
         if selected:
             try:
                 task = self.task(selected)
-                if task.get("contract_head_id"):
-                    errors.extend(verify_stable_inputs(self.workspace, self.contract(selected)["content"]))
+                recovery = self.recovery(selected)
+                workspace_alignment = recovery["workspace_alignment"]
+                check_live_task = explicit_task or task["lifecycle_status"] != "completed"
+                if task.get("contract_head_id") and check_live_task:
+                    violations.extend(verify_stable_inputs(self.workspace, self.contract(selected)["content"]))
                 attempt = self.latest_attempt(selected)
-                if attempt:
+                if attempt and check_live_task:
                     try:
-                        self._assert_aligned(attempt, self.contract(selected)["content"])
+                        self._assert_attempt_content(attempt)
                     except DurableError as exc:
-                        errors.append(str(exc))
-                    for item in self.evidence(attempt["attempt_id"]):
-                        try:
-                            if _file_hash(self._safe_file(item["path"])) != item["sha256"]:
-                                errors.append(f"evidence hash drift: {item['path']}")
-                        except DurableError as exc:
-                            errors.append(str(exc))
+                        violations.append(str(exc))
+                    if workspace_alignment != "aligned":
+                        expected_work_in_progress = bool(
+                            workspace_alignment == "ahead"
+                            and task["lifecycle_status"] == "open"
+                            and task.get("active_attempt_id") == attempt["attempt_id"]
+                        )
+                        if expected_work_in_progress:
+                            reconciliation_required = True
+                        else:
+                            violations.append(f"workspace alignment is {workspace_alignment}")
                 if task.get("acceptance_head_id"):
                     self._evaluation_chain(self.evaluation(task["acceptance_head_id"]))
             except DurableError as exc:
-                errors.append(str(exc))
-        return {"sqlite": "ok", "passed": not errors, "errors": errors, "workspace_alignment": self.recovery(selected)["workspace_alignment"] if selected else "aligned"}
+                violations.append(str(exc))
+        status = "violated" if violations else "not_yet_reconciled" if reconciliation_required else "valid"
+        return {
+            "sqlite": "ok",
+            "status": status,
+            "passed": status != "violated",
+            "errors": violations,
+            "violations": violations,
+            "reconciliation_required": reconciliation_required,
+            "workspace_alignment": workspace_alignment,
+        }
 
     def attempt(self, attempt_id: str) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM attempts WHERE attempt_id=?", (attempt_id,)).fetchone()
@@ -1051,7 +1117,9 @@ class DurableStore:
         value["records"] = self.records(attempt_id)
         value["evidence"] = self.evidence(attempt_id)
         started = value["records"][0]["payload"] if value["records"] else {}
-        value["worker_context"] = started.get("context") or _unavailable_context()
+        legacy_context = started.get("context") if isinstance(started.get("context"), dict) else {}
+        value["worker_context"] = started.get("context_id") or legacy_context.get("context_id")
+        value["carried_forward"] = started.get("carried_forward")
         return value
 
     def latest_attempt(self, task_id: str) -> dict[str, Any] | None:
@@ -1063,6 +1131,111 @@ class DurableStore:
 
     def evidence(self, attempt_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in self.conn.execute("SELECT * FROM evidence WHERE attempt_id=? ORDER BY created_at", (attempt_id,))]
+
+    def protocol_activity(self, task_id: str) -> dict[str, Any]:
+        self.task(task_id)
+        counts = {
+            "contracts": int(self.conn.execute("SELECT COUNT(*) FROM contracts WHERE task_id=?", (task_id,)).fetchone()[0]),
+            "attempts": int(self.conn.execute("SELECT COUNT(*) FROM attempts WHERE task_id=?", (task_id,)).fetchone()[0]),
+            "checkpoints": int(self.conn.execute("SELECT COUNT(*) FROM attempt_records r JOIN attempts a ON a.attempt_id=r.attempt_id WHERE a.task_id=? AND r.type='checkpoint'", (task_id,)).fetchone()[0]),
+            "evidence": int(self.conn.execute("SELECT COUNT(*) FROM evidence e JOIN attempts a ON a.attempt_id=e.attempt_id WHERE a.task_id=?", (task_id,)).fetchone()[0]),
+            "evaluations": int(self.conn.execute("SELECT COUNT(*) FROM evaluations WHERE task_id=?", (task_id,)).fetchone()[0]),
+            "decisions": int(self.conn.execute("SELECT COUNT(*) FROM decision_events WHERE task_id=?", (task_id,)).fetchone()[0]),
+        }
+        tier = self.assurance_state(task_id)["effective_tier"]
+        warning = None
+        if tier == "durable_routine" and (counts["attempts"] > 3 or counts["checkpoints"] > counts["attempts"] + 2):
+            warning = "Routine Task protocol activity is high; prefer task begin plus resumable attempt finish and avoid heartbeat writes."
+        return {
+            **counts,
+            "expected_agent_lifecycle_commands": 2,
+            "routing_warning": warning,
+        }
+
+    def active_evaluation_chain(self, task_id: str) -> list[dict[str, Any]]:
+        task = self.task(task_id)
+        head_id = task.get("acceptance_head_id")
+        if not head_id:
+            return []
+        return [
+            {
+                "evaluation_id": item["evaluation_id"],
+                "kind": item["kind"],
+                "authority": item["authority"],
+                "decision": item["decision"],
+                "subject_type": item["subject_type"],
+                "subject_id": item["subject_id"],
+                "content_hash": item["content_hash"],
+            }
+            for item in self._evaluation_chain(self.evaluation(head_id))
+        ]
+
+    def review_handoff(self, task_id: str) -> dict[str, Any] | None:
+        projection = self.control_projection(task_id)
+        if projection["next_transition"] != "review:reviewer":
+            return None
+        task = self.task(task_id)
+        head_id = task.get("acceptance_head_id")
+        if not head_id:
+            return None
+        chain = self._evaluation_chain(self.evaluation(head_id))
+        root = chain[0]
+        if root["kind"] != "verification" or root["subject_type"] != "attempt":
+            return None
+        attempt = self.attempt(root["subject_id"])
+        contract = self.contract(task_id)
+        checkpoint = self._latest_checkpoint_payload(attempt["attempt_id"]) or {}
+        assurance = projection["assurance"]
+        return {
+            "schema": "metaloop.review_handoff",
+            "task": {"task_id": task_id, "title": task["title"]},
+            "claim": {
+                "goal": contract["content"].get("goal"),
+                "constraints": list(contract["content"].get("constraints", [])),
+                "non_goals": list(contract["content"].get("non_goals", [])),
+                "acceptance_criteria": list(contract["content"].get("acceptance_criteria", [])),
+            },
+            "review_focus": {
+                "trigger_ids": list(assurance.get("unresolved_trigger_ids", [])),
+                "rationale": list(contract["content"].get("assurance", {}).get("rationale", [])),
+            },
+            "exact_subject": {
+                "contract_id": contract["contract_id"],
+                "contract_hash": contract["content_hash"],
+                "attempt_id": attempt["attempt_id"],
+                "attempt_hash": attempt["execution_hash"],
+                "evaluation_id": root["evaluation_id"],
+                "evaluation_hash": root["content_hash"],
+            },
+            "validator_results": [_review_validator_summary(item) for item in root["payload"].get("validator_results", [])],
+            "claimed_paths": list(checkpoint.get("claimed_paths", [])),
+            "evidence": [
+                {"evidence_id": item["evidence_id"], "path": item["path"], "sha256": item["sha256"]}
+                for item in attempt["evidence"]
+            ],
+            "active_chain": self.active_evaluation_chain(task_id),
+            "report_template": {
+                "review_scope": "",
+                "questions_and_findings": [],
+                "counterexamples_executed": [],
+                "blocking_findings": [],
+                "nonblocking_risks": [],
+                "resolved_trigger_ids": [],
+                "decision": "",
+            },
+        }
+
+    def external_ref(self, task_id: str) -> dict[str, str] | None:
+        attempt = self.latest_attempt(task_id)
+        if attempt is None:
+            return None
+        checkpoint = self._latest_checkpoint_payload(attempt["attempt_id"])
+        if checkpoint and checkpoint.get("external_ref") is not None:
+            return _normalize_external_ref(checkpoint["external_ref"])
+        carried = attempt.get("carried_forward")
+        if isinstance(carried, dict) and carried.get("source_external_ref") is not None:
+            return _normalize_external_ref(carried["source_external_ref"])
+        return None
 
     def evaluation(self, evaluation_id: str) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM evaluations WHERE evaluation_id=?", (evaluation_id,)).fetchone()
@@ -1088,10 +1261,7 @@ class DurableStore:
         return values
 
     def _assert_aligned(self, attempt: dict[str, Any], contract: dict[str, Any]) -> None:
-        if attempt["status"] == "sealed":
-            manifest = {"attempt_id": attempt["attempt_id"], "contract_id": attempt["contract_id"], "evidence": attempt["evidence"], "records": attempt["records"], "outcome": "sealed"}
-            if _digest(manifest) != attempt["execution_hash"]:
-                raise DurableError(f"sealed Attempt content hash mismatch: {attempt['attempt_id']}")
+        self._assert_attempt_manifest(attempt)
         current = GitWorkspace(self.workspace).stamp()
         latest = self._latest_checkpoint_payload(attempt["attempt_id"])
         previous = WorkspaceStamp.from_dict(latest["workspace_stamp"]) if latest and latest.get("workspace_stamp") else WorkspaceStamp.from_dict(attempt["baseline_stamp"])
@@ -1101,18 +1271,22 @@ class DurableStore:
         stable_errors = verify_stable_inputs(self.workspace, contract)
         if stable_errors:
             raise DurableError("; ".join(stable_errors))
+        self._assert_evidence(attempt)
+
+    def _assert_attempt_content(self, attempt: dict[str, Any]) -> None:
+        self._assert_attempt_manifest(attempt)
+        self._assert_evidence(attempt)
+
+    def _assert_attempt_manifest(self, attempt: dict[str, Any]) -> None:
+        if attempt["status"] == "sealed":
+            manifest = {"attempt_id": attempt["attempt_id"], "contract_id": attempt["contract_id"], "evidence": attempt["evidence"], "records": attempt["records"], "outcome": "sealed"}
+            if _digest(manifest) != attempt["execution_hash"]:
+                raise DurableError(f"sealed Attempt content hash mismatch: {attempt['attempt_id']}")
+
+    def _assert_evidence(self, attempt: dict[str, Any]) -> None:
         for item in attempt["evidence"]:
             if _file_hash(self._safe_file(item["path"])) != item["sha256"]:
                 raise DurableError(f"evidence hash drift: {item['path']}")
-
-    def _review_has_verified_independence(self, review: dict[str, Any], attempt: dict[str, Any]) -> bool:
-        return bool(
-            review["payload"].get("independence") == "verified"
-            and _contexts_are_verified_and_distinct(
-                attempt.get("worker_context") or _unavailable_context(),
-                review["payload"].get("context") or _unavailable_context(),
-            )
-        )
 
     def _assert_assurance_revision(self, task: dict[str, Any], content: dict[str, Any]) -> None:
         previous = self.assurance_state(task["task_id"])
@@ -1144,28 +1318,38 @@ class DurableStore:
         missing_proofs = sorted(unresolved - set(proofs))
         if missing_proofs:
             raise InvalidTransitionError(
-                "assurance downgrade lacks normalized proof for triggers: " + ", ".join(missing_proofs)
+                "assurance downgrade Review does not resolve triggers: " + ", ".join(missing_proofs)
             )
 
     def _run_validator(self, validator: dict[str, Any]) -> dict[str, Any]:
         kind = str(validator.get("type") or "")
-        proof_binding = {
-            "validator_id": validator.get("validator_id"),
-            "resolves_trigger_ids": list(validator.get("resolves_trigger_ids", [])),
-        }
         if kind == "command":
             command = str(validator.get("command") or "")
-            result = subprocess.run(command, shell=True, cwd=self.workspace, text=True, capture_output=True, timeout=int(validator.get("timeout", 600)), check=False)
-            return {"type": kind, "command": command, "passed": result.returncode == 0, "exit_code": result.returncode, "stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:], **proof_binding}
+            timeout = int(validator.get("timeout", 600))
+            try:
+                result = subprocess.run(command, shell=True, cwd=self.workspace, text=True, capture_output=True, timeout=timeout, check=False)
+            except subprocess.TimeoutExpired as error:
+                return {
+                    "type": kind,
+                    "command": command,
+                    "passed": False,
+                    "exit_code": None,
+                    "timed_out": True,
+                    "timeout_seconds": timeout,
+                    "stdout": _output_tail(error.stdout),
+                    "stderr": _output_tail(error.stderr),
+                }
+            return {"type": kind, "command": command, "passed": result.returncode == 0, "exit_code": result.returncode, "stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:]}
         if kind == "file_exists":
             path = str(validator.get("path") or "")
-            return {"type": kind, "path": path, "passed": self._safe_file(path).is_file(), **proof_binding}
+            return {"type": kind, "path": path, "passed": self._workspace_path(path).is_file()}
         if kind == "artifact_hash":
             path = str(validator.get("path") or "")
             expected = str(validator.get("sha256") or "")
-            actual = _file_hash(self._safe_file(path))
-            return {"type": kind, "path": path, "expected": expected, "actual": actual, "passed": actual == expected, **proof_binding}
-        return {"type": kind, "passed": False, "message": "unsupported validator", **proof_binding}
+            target = self._workspace_path(path)
+            actual = _file_hash(target) if target.is_file() else None
+            return {"type": kind, "path": path, "expected": expected, "actual": actual, "passed": actual == expected}
+        return {"type": kind, "passed": False, "message": "unsupported validator"}
 
     def _insert_evaluation(
         self,
@@ -1241,6 +1425,51 @@ class DurableStore:
         row = self.conn.execute("SELECT content_json FROM attempt_records WHERE attempt_id=? AND type='checkpoint' ORDER BY seq DESC LIMIT 1", (attempt_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
+    def _latest_checkpoint_record(self, attempt_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute("SELECT * FROM attempt_records WHERE attempt_id=? AND type='checkpoint' ORDER BY seq DESC LIMIT 1", (attempt_id,)).fetchone()
+        return self._record_value(row) if row else None
+
+    def _verification_for_attempt(self, attempt_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT evaluation_id FROM evaluations WHERE subject_type='attempt' AND subject_id=? AND kind='verification' ORDER BY created_at LIMIT 1",
+            (attempt_id,),
+        ).fetchone()
+        return self.evaluation(row[0]) if row else None
+
+    def _carried_forward_provenance(self, source: dict[str, Any], current: WorkspaceStamp) -> dict[str, Any]:
+        source_payload = self._latest_checkpoint_payload(source["attempt_id"])
+        baseline_stamp = WorkspaceStamp.from_dict(source["baseline_stamp"])
+        checkpoint_stamp = (
+            WorkspaceStamp.from_dict(source_payload["workspace_stamp"])
+            if source_payload and source_payload.get("workspace_stamp")
+            else None
+        )
+        paths = set(changed_paths_between(baseline_stamp, current))
+        if checkpoint_stamp is not None:
+            paths.update(changed_paths_between(baseline_stamp, checkpoint_stamp))
+            paths.update(changed_paths_between(checkpoint_stamp, current))
+        source_states = dict(baseline_stamp.path_states)
+        adopted_states = dict(current.path_states)
+        return {
+            "source_attempt_id": source["attempt_id"],
+            "source_contract_id": source["contract_id"],
+            "source_status": source["status"],
+            "source_execution_hash": source.get("execution_hash"),
+            "source_checkpoint_hash": source.get("latest_checkpoint_hash"),
+            "source_workspace_hash": baseline_stamp.content_hash(),
+            "source_checkpoint_workspace_hash": checkpoint_stamp.content_hash() if checkpoint_stamp else None,
+            "adopted_workspace_hash": current.content_hash(),
+            "source_external_ref": _normalize_external_ref(source_payload.get("external_ref")) if source_payload else None,
+            "paths": [
+                {
+                    "path": path,
+                    "source_state": source_states.get(path),
+                    "adopted_state": adopted_states.get(path),
+                }
+                for path in sorted(paths)
+            ],
+        }
+
     def _recovery_source(self, task: dict[str, Any], attempt: dict[str, Any] | None, current: WorkspaceStamp, alignment: str) -> str:
         evaluations = [row[0] for row in self.conn.execute("SELECT evaluation_id FROM evaluations WHERE task_id=? ORDER BY created_at", (task["task_id"],))]
         payload = {
@@ -1261,12 +1490,18 @@ class DurableStore:
         return _digest(payload)
 
     def _safe_file(self, path: str) -> Path:
+        target = self._workspace_path(path)
+        if not target.exists():
+            raise DurableError(f"workspace file missing: {path}")
+        return target
+
+    def _workspace_path(self, path: str) -> Path:
         relative = Path(path)
         if relative.is_absolute() or ".." in relative.parts or ".metaloop" in relative.parts:
             raise DurableError(f"unsafe workspace path: {path}")
         target = (self.workspace / relative).resolve()
-        if not target.is_relative_to(self.workspace) or not target.exists():
-            raise DurableError(f"workspace file missing: {path}")
+        if not target.is_relative_to(self.workspace):
+            raise DurableError(f"unsafe workspace path: {path}")
         return target
 
     def _would_cycle(self, task_id: str, dependency: str) -> bool:
@@ -1349,40 +1584,6 @@ def _evaluation_authority_sequence(root: dict[str, Any]) -> list[str] | None:
     return list(declared)
 
 
-def _unavailable_context() -> dict[str, Any]:
-    return {"source": "unavailable", "provider": "unavailable", "context_id": None, "verified": False}
-
-
-def _context_provenance(context_id: str | None, host_context: dict[str, Any] | None = None) -> dict[str, Any]:
-    if context_id:
-        return {"source": "manual", "provider": "manual", "context_id": str(context_id), "verified": False}
-    if host_context is None:
-        return _unavailable_context()
-    if not isinstance(host_context, dict):
-        raise ValueError("host_context must be an object supplied by a trusted host adapter")
-    resolved = host_context.get("context_id")
-    provider = host_context.get("provider")
-    if not isinstance(resolved, str) or not resolved.strip():
-        raise ValueError("host_context.context_id must be a non-empty string")
-    if not isinstance(provider, str) or not provider.strip():
-        raise ValueError("host_context.provider must be a non-empty string")
-    return {"source": "host", "provider": provider.strip(), "context_id": resolved.strip(), "verified": True}
-
-
-def _contexts_are_verified_and_distinct(worker: dict[str, Any], reviewer: dict[str, Any]) -> bool:
-    return bool(
-        _is_verified_host_context(worker)
-        and _is_verified_host_context(reviewer)
-        and worker.get("context_id")
-        and reviewer.get("context_id")
-        and worker["context_id"] != reviewer["context_id"]
-    )
-
-
-def _is_verified_host_context(value: dict[str, Any]) -> bool:
-    return bool(value.get("source") == "host" and value.get("verified") is True and value.get("context_id"))
-
-
 def _normalize_review_report(
     report: dict[str, Any],
     *,
@@ -1438,8 +1639,43 @@ def _path_set(values: Any) -> set[str]:
     return output
 
 
+def _review_validator_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"type": "unknown", "passed": False}
+    keys = ("type", "passed", "command", "path", "expected", "actual", "exit_code", "timed_out", "timeout_seconds")
+    return {key: value[key] for key in keys if key in value}
+
+
+def _normalize_external_ref(value: Any) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("external_ref must be an object")
+    locator = value.get("locator")
+    if not isinstance(locator, str) or not locator.strip():
+        raise ValueError("external_ref.locator must be a non-empty string")
+    result = {"locator": locator.strip()}
+    checkpoint_identity = value.get("checkpoint_identity")
+    if checkpoint_identity is not None:
+        if not isinstance(checkpoint_identity, str) or not checkpoint_identity.strip():
+            raise ValueError("external_ref.checkpoint_identity must be a non-empty string")
+        result["checkpoint_identity"] = checkpoint_identity.strip()
+    unknown = set(value) - {"locator", "checkpoint_identity"}
+    if unknown:
+        raise ValueError("external_ref contains unsupported fields: " + ", ".join(sorted(str(item) for item in unknown)))
+    return result
+
+
 def _file_hash(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _output_tail(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode(errors="replace")
+    return value[-4000:]
 
 
 def _digest(value: Any) -> str:

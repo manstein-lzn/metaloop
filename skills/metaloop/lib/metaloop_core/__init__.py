@@ -1,4 +1,4 @@
-"""MetaLoop v3.2 canonical Git-backed durable protocol APIs."""
+"""MetaLoop v3.4 canonical Git-backed durable protocol APIs."""
 
 from metaloop_core.contracts import contract_assurance, contract_hash, managed_output_paths, normalize_contract, validate_contract, verify_stable_inputs
 from metaloop_core.decisions import validate_decision, validate_event_type

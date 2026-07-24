@@ -1,6 +1,6 @@
-# MetaLoop v3.2 Handoff
+# MetaLoop v3.4 Handoff
 
-最后更新：2026-07-22
+最后更新：2026-07-23
 
 ## 快速恢复
 
@@ -16,12 +16,15 @@
 ## 主路径
 
 ```text
-routine: $metaloop -> task begin -> Work -> attempt finish -> accepted
+routine: $metaloop -> task begin --check <project verifier> -> Work -> resumable attempt finish -> accepted
 governed: Frame -> Attempt/checkpoints -> Evidence -> verify -> accept
 high assurance: governed -> fresh-context structured Review -> accept
 both: one SQLite ontology + live-derived RecoveryView + exact Git alignment
 control: verify -> reviewer -> reserved user -> accept; terminal failure -> repair Attempt
 ```
+
+普通局部修改、文档同步和测试修复默认走 Git + 项目 verifier，不创建 MetaLoop Task。
+只有持久恢复、任务切换、正式封存或真实语义 Review 才进入上面的 durable path。
 
 ## 开发纪律
 
@@ -34,12 +37,27 @@ control: verify -> reviewer -> reserved user -> accept; terminal failure -> repa
 - managed outputs 必须是 exact Evidence；stable inputs 漂移 fail closed。
 - one worktree 只允许一个 open mutating Attempt。
 - Contract v1.1 assurance 由内核规范化，Tier 3 自动需要 reviewer。
+- `task begin` 的 create/contract/select/start 通过嵌套 savepoint 保持单事务语义；输入
+  校验或 Attempt start 失败不能遗留空 Task。
+- `attempt finish` 自动 reconcile current-Attempt delta、绑定 managed Evidence、seal、verify，
+  并可在部分完成后重复执行；普通路径不逐文件 claim。
+- 最新 terminal same-Task Attempt 的 non-conflicted workspace 自动成为下一 Attempt baseline，
+  并从 source baseline/checkpoint 到 adopted workspace 保存逐路径 provenance；当前 Contract
+  scope 在 Attempt 创建前重新校验 carried paths。
 - Review 只能扩展 active Evaluation head；accept 只能消费 active head。
 - active head transition 递增 Task CAS；旧 Attempt、乱序 authority 和 terminal Review 不能
   重新成为 acceptance 候选，历史坏链通过新 Attempt 恢复。
-- Tier 3 report 必须 hash-bound 且由不同 verified host context 提供；CLI `--context-id`
-  只是 manual/unverified 标签。
-- Tier 3 trigger 降级需要逐项绑定 mapped executable validator 或 verified Review proof。
+- Tier 3 report 必须 hash-bound 且为结构化 Review；context label 只用于诊断，不是接受门禁。
+- Tier 3 trigger 降级需要 approved Review report 逐项列出 `resolved_trigger_ids`；普通
+  validator 不自动解除风险记忆。
+- user authority 只能在 Contract assurance 中作为最终决策声明，不能通过 validator 或
+  resource gate 旁路进入 Evaluation chain。
+- 项目 verifier 负责技术正确性，MetaLoop 只负责完成证明和恢复，不复制领域检查。
+- integrity 将 active Attempt 的普通 ahead 投影为 `not_yet_reconciled`，只有结构、identity、
+  hash、Evidence、stable input、conflict 或 closed-claim drift 才是 `violated`。
+- brief/recovery 只显示当前 active Evaluation lineage；`review:reviewer` 时自动派生最小
+  `review_handoff`，不新增 packet 状态或命令。
+- 可选 external locator 只用于恢复定位；进度、存活和完成仍由外部 manifest 负责。
 - 子 Task 不会隐式完成 parent；approved active chain 才能 accept。
 
 ## 验证
@@ -53,5 +71,6 @@ pytest -q
 git diff --check
 ```
 
-下一步让原 alpha Agent 继续真实任务，优先验证 Tier 1 操作数、Tier 2 reviewer false
+下一步让原 alpha Agent 继续真实任务，优先验证 Tier 1 操作数、finish 重试、workspace
+自动继承、Tier 2 reviewer false
 positive、Tier 3 finding yield、context recovery 重复工作和不必要用户中断。

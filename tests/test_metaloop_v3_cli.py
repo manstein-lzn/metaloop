@@ -73,6 +73,10 @@ def test_cli_runs_complete_git_aligned_task_and_blocks_drift(tmp_path: Path) -> 
     (repo / "src" / "result.txt").write_text("done\n", encoding="utf-8")
     ahead = _json(_run(repo, "recover", "show", "--task", task_id))
     assert ahead["workspace_alignment"] == "ahead"
+    brief = _json(_run(repo, "observe", "--task", task_id, "--format", "brief"))
+    assert brief["integrity"] is True
+    assert brief["integrity_status"] == "not_yet_reconciled"
+    assert brief["control_status"] == "working"
     blocked = _run(repo, "attempt", "seal", "--attempt", attempt_id, "--expected-version", "3")
     assert blocked.returncode == 1
     assert "workspace alignment is ahead" in blocked.stderr
@@ -169,11 +173,153 @@ def test_cli_begin_and_finish_are_one_ontology_low_friction_path(tmp_path: Path)
     assert [item["path"] for item in finished["evidence"]] == ["src/result.txt"]
 
 
-def test_cli_high_assurance_review_is_structured_and_brief_status_is_compatible(tmp_path: Path, monkeypatch) -> None:
+def test_cli_begin_validation_failure_leaves_no_empty_task(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _json(_run(repo, "project", "init"))
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "worker-context")
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_PROVIDER", "pytest-host")
+    invalid = {
+        "goal": "Reject malformed validator input.",
+        "rationale": ["The CLI should fail before creating protocol state."],
+        "constraints": [],
+        "non_goals": [],
+        "acceptance_criteria": ["Malformed manual validators are rejected."],
+        "verification_spec": {
+            "validators": [{"type": "manual_acceptance", "authority": "reviewer"}],
+            "resource_gates": [],
+        },
+        "protocol_shape": "single_node",
+        "execution_scope": {"paths": [], "stable_inputs": [], "managed_outputs": [], "change_kind": "repair", "migration_plan": None},
+    }
+    contract_path = repo / ".metaloop" / "invalid-contract.json"
+    contract_path.write_text(json.dumps(invalid), encoding="utf-8")
+
+    failed = _run(repo, "task", "begin", "--title", "must not remain", "--contract", str(contract_path), "--plan", "reject")
+    assert failed.returncode == 1
+    assert "manual_acceptance validators require mode=manual" in failed.stderr
+    assert _json(_run(repo, "task", "list")) == []
+
+
+def test_cli_generated_tier_one_contract_avoids_contract_file_ceremony(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+    begun = _json(
+        _run(
+            repo,
+            "task",
+            "begin",
+            "--title",
+            "Durable routine repair",
+            "--plan",
+            "write and verify one output",
+            "--check",
+            "test -f src/result.txt",
+            "--allowed-path",
+            "src",
+            "--managed-output",
+            "implementation=src/result.txt",
+        )
+    )
+    assert begun["contract"]["content"]["assurance"]["tier"] == "durable_routine"
+    assert begun["contract"]["content"]["goal"] == "Durable routine repair"
+    assert "change_kind" not in begun["contract"]["content"]["execution_scope"]
+    brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
+    assert brief["protocol_activity"]["expected_agent_lifecycle_commands"] == 2
+    assert brief["routing_warning"] is None
+
+    (repo / "src" / "result.txt").write_text("done\n", encoding="utf-8")
+    (repo / "src" / "implementation.py").write_text("VALUE = 1\n", encoding="utf-8")
+    finished = _json(
+        _run(
+            repo,
+            "attempt",
+            "finish",
+            "--attempt",
+            begun["attempt"]["attempt_id"],
+            "--external-ref",
+            "/runs/routine-42",
+            "--external-checkpoint-identity",
+            "checkpoint-final",
+        )
+    )
+    assert finished["task"]["lifecycle_status"] == "completed"
+    assert finished["evaluation"]["payload"]["validator_results"][0]["passed"] is True
+    assert finished["checkpoint"]["payload"]["claimed_paths"] == ["src/implementation.py", "src/result.txt"]
+    assert finished["checkpoint"]["payload"]["external_ref"] == {
+        "locator": "/runs/routine-42",
+        "checkpoint_identity": "checkpoint-final",
+    }
+    completed_brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
+    assert completed_brief["external_ref"] == finished["checkpoint"]["payload"]["external_ref"]
+    repeated = _json(_run(repo, "attempt", "finish", "--attempt", begun["attempt"]["attempt_id"]))
+    assert repeated["evaluation"]["evaluation_id"] == finished["evaluation"]["evaluation_id"]
+    assert repeated["task"]["lifecycle_status"] == "completed"
+
+
+def test_cli_automatically_adopts_latest_aborted_workspace(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+    begun = _json(
+        _run(
+            repo,
+            "task",
+            "begin",
+            "--title",
+            "Resume carried work",
+            "--plan",
+            "first strategy",
+            "--check",
+            "test -f src/result.txt",
+            "--allowed-path",
+            "src",
+        )
+    )
+    first = begun["attempt"]
+    (repo / "src" / "result.txt").write_text("carried\n", encoding="utf-8")
+    _json(_run(repo, "attempt", "abort", "--attempt", first["attempt_id"], "--reason", "change strategy"))
+
+    retry = _json(
+        _run(
+            repo,
+            "attempt",
+            "start",
+            "--task",
+            begun["task"]["task_id"],
+            "--expected-version",
+            "4",
+            "--plan",
+            "continue the carried workspace",
+        )
+    )
+
+    assert retry["carried_forward"]["source_attempt_id"] == first["attempt_id"]
+    assert [item["path"] for item in retry["carried_forward"]["paths"]] == ["src/result.txt"]
+    finished = _json(_run(repo, "attempt", "finish", "--attempt", retry["attempt_id"]))
+    assert finished["task"]["lifecycle_status"] == "completed"
+
+
+def test_cli_generated_tier_one_rejects_blank_check_without_state(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
+
+    failed = _run(
+        repo,
+        "task",
+        "begin",
+        "--title",
+        "Blank check",
+        "--plan",
+        "must not start",
+        "--check",
+        "   ",
+    )
+
+    assert failed.returncode == 1
+    assert "--check must be a non-empty command" in failed.stderr
+    assert _json(_run(repo, "task", "list")) == []
+
+
+def test_cli_high_assurance_review_is_structured_without_host_configuration(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _json(_run(repo, "project", "init"))
     contract = {
         "goal": "Verify one semantic claim.",
         "rationale": ["Exercise fresh-context review."],
@@ -208,8 +354,8 @@ def test_cli_high_assurance_review_is_structured_and_brief_status_is_compatible(
     verification_id = finished["evaluation"]["evaluation_id"]
     assert finished["pending_authorities"] == ["reviewer"]
     assert finished["task"]["acceptance_head_id"] == verification_id
+    assert finished["review_handoff"]["exact_subject"]["evaluation_id"] == verification_id
 
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "reviewer-context")
     missing = _run(
         repo,
         "evaluate",
@@ -253,6 +399,8 @@ def test_cli_high_assurance_review_is_structured_and_brief_status_is_compatible(
     brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
     assert brief["control_status"] == "acceptance_ready"
     assert brief["pending_authorities"] == []
+    assert [item["kind"] for item in brief["active_chain"]] == ["verification", "review"]
+    assert brief["review_handoff"] is None
     assert brief["recovery_status"] == "fresh"
     assert brief["workspace_alignment"] == "aligned"
     completed = _json(
@@ -271,17 +419,15 @@ def test_cli_high_assurance_review_is_structured_and_brief_status_is_compatible(
     assert completed["lifecycle_status"] == "completed"
 
 
-def test_cli_context_id_is_manual_and_cannot_satisfy_tier_three(tmp_path: Path, monkeypatch) -> None:
+def test_cli_context_id_is_optional_annotation(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _json(_run(repo, "project", "init"))
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "host-worker")
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_PROVIDER", "pytest-host")
     contract = {
         "goal": "Exercise manual context provenance.",
         "rationale": ["Manual labels must not become host attestation."],
         "constraints": ["Do not mutate project files."],
-        "non_goals": ["Do not accept an unverified Tier 3 Review."],
-        "acceptance_criteria": ["The kernel blocks unverified independence."],
+        "non_goals": ["Do not add host authentication to the protocol."],
+        "acceptance_criteria": ["A structured Review completes the claim."],
         "verification_spec": {
             "validators": [{"type": "command", "mode": "executable", "command": "true"}],
             "resource_gates": [],
@@ -311,8 +457,7 @@ def test_cli_context_id_is_manual_and_cannot_satisfy_tier_three(tmp_path: Path, 
             "manual-worker",
         )
     )
-    assert begun["attempt"]["worker_context"]["source"] == "manual"
-    assert begun["attempt"]["worker_context"]["verified"] is False
+    assert begun["attempt"]["worker_context"] == "manual-worker"
     finished = _json(_run(repo, "attempt", "finish", "--attempt", begun["attempt"]["attempt_id"]))
 
     report = {
@@ -326,7 +471,6 @@ def test_cli_context_id_is_manual_and_cannot_satisfy_tier_three(tmp_path: Path, 
     }
     report_path = repo / ".metaloop" / "manual-review.json"
     report_path.write_text(json.dumps(report), encoding="utf-8")
-    monkeypatch.setenv("METALOOP_HOST_CONTEXT_ID", "host-reviewer")
     review = _json(
         _run(
             repo,
@@ -344,21 +488,20 @@ def test_cli_context_id_is_manual_and_cannot_satisfy_tier_three(tmp_path: Path, 
             str(report_path),
         )
     )
-    assert review["payload"]["context"]["source"] == "manual"
-    assert review["payload"]["independence"] == "unverified"
+    assert review["payload"]["context_id"] == "manual-reviewer"
     brief = _json(_run(repo, "observe", "--task", begun["task"]["task_id"], "--format", "brief"))
-    assert brief["control_status"] == "high_assurance_review_unverified"
-    assert brief["next_transition"] == "start_repair_attempt"
-    blocked = _run(
-        repo,
-        "evaluate",
-        "accept",
-        "--task",
-        begun["task"]["task_id"],
-        "--evaluation",
-        review["evaluation_id"],
-        "--expected-version",
-        str(review["task_state_version"]),
+    assert brief["control_status"] == "acceptance_ready"
+    completed = _json(
+        _run(
+            repo,
+            "evaluate",
+            "accept",
+            "--task",
+            begun["task"]["task_id"],
+            "--evaluation",
+            review["evaluation_id"],
+            "--expected-version",
+            str(review["task_state_version"]),
+        )
     )
-    assert blocked.returncode == 1
-    assert "start_repair_attempt" in blocked.stderr
+    assert completed["lifecycle_status"] == "completed"

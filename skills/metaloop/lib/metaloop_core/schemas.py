@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 SCHEMA_VERSION = 3
-PROTOCOL_VERSION = "3.2"
+PROTOCOL_VERSION = "3.4"
 PROJECT_SCHEMA = "metaloop.final.project"
 TASK_SCHEMA = "metaloop.final.task"
 CONTRACT_SCHEMA = "metaloop.final.contract"

@@ -73,8 +73,75 @@ def _review_report(*, decision: str = "approved", blocking: list[str] | None = N
     }
 
 
-def _host_context(context_id: str) -> dict[str, str]:
-    return {"provider": "pytest-host", "context_id": context_id}
+def test_begin_task_is_atomic_when_contract_validation_fails(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    store = DurableStore(repo, initialize=True)
+    invalid = _contract(managed=False)
+    invalid["verification_spec"]["validators"][0]["type"] = "manual_acceptance"
+    invalid["verification_spec"]["validators"][0].pop("mode")
+
+    with pytest.raises(ValueError, match="manual_acceptance validators require mode=manual"):
+        store.begin_task("invalid contract", invalid, plan="must not start")
+
+    assert store.tasks() == []
+    assert store.project()["default_task_id"] is None
+
+    user_validator = _contract(managed=False)
+    user_validator["verification_spec"]["validators"][0]["authority"] = "user"
+    with pytest.raises(ValueError, match="reserve final user authority in contract.assurance"):
+        store.begin_task("invalid user authority", user_validator, plan="must not start")
+    assert store.tasks() == []
+
+    missing_command = _contract(managed=False)
+    missing_command["verification_spec"]["validators"] = [{"type": "command", "mode": "executable"}]
+    with pytest.raises(ValueError, match="command must be a non-empty string"):
+        store.begin_task("missing command", missing_command, plan="must not start")
+
+    malformed_gate = _contract(managed=False)
+    malformed_gate["verification_spec"]["resource_gates"] = ["not-an-object"]
+    with pytest.raises(ValueError, match=r"resource_gates\[0\] must be an object"):
+        store.begin_task("malformed gate", malformed_gate, plan="must not start")
+
+    for unsafe_path in ("../outside", "/tmp/outside", ".metaloop/private"):
+        unsafe = _contract(managed=False)
+        unsafe["verification_spec"]["validators"] = [
+            {"type": "file_exists", "mode": "executable", "path": unsafe_path}
+        ]
+        with pytest.raises(ValueError, match="path must be a safe workspace-relative path"):
+            store.begin_task("unsafe validator path", unsafe, plan="must not start")
+
+    invalid_timeout = _contract(managed=False)
+    invalid_timeout["verification_spec"]["validators"][0]["timeout"] = "not-an-integer"
+    with pytest.raises(ValueError, match="timeout must be a positive integer"):
+        store.begin_task("invalid timeout", invalid_timeout, plan="must not start")
+
+    unknown_authority = _contract(managed=False)
+    unknown_authority["verification_spec"]["validators"] = [
+        {"type": "manual_acceptance", "mode": "manual", "authority": "unknown"}
+    ]
+    with pytest.raises(ValueError, match="authority must be reviewer"):
+        store.begin_task("unknown authority", unknown_authority, plan="must not start")
+    assert store.tasks() == []
+
+
+def test_begin_task_rolls_back_composed_writes_when_attempt_start_fails(tmp_path: Path) -> None:
+    _, store, existing = _designed_store(tmp_path, managed=False)
+    store.start_attempt(existing["task_id"], expected_version=2, plan="existing work", input_snapshot={})
+
+    with pytest.raises(ConflictError, match="open mutating Attempt"):
+        store.begin_task("must roll back", _contract(managed=False), plan="cannot start")
+
+    assert [task["task_id"] for task in store.tasks()] == [existing["task_id"]]
+    assert store.project()["default_task_id"] == existing["task_id"]
+
+    with store.transaction():
+        try:
+            store.begin_task("caught nested failure", _contract(managed=False), plan="cannot start")
+        except ConflictError:
+            pass
+
+    assert [task["task_id"] for task in store.tasks()] == [existing["task_id"]]
+    assert store.project()["default_task_id"] == existing["task_id"]
 
 
 def _append_historical_review(store: DurableStore, parent: dict, *, authority: str, decision: str = "approved") -> dict:
@@ -194,6 +261,64 @@ def test_validator_workspace_mutation_cannot_be_accepted(tmp_path: Path) -> None
         store.evaluate_verify(attempt["attempt_id"])
 
 
+@pytest.mark.parametrize(
+    ("validator", "expected_runtime_detail"),
+    [
+        ({"type": "file_exists", "mode": "executable", "path": "src/missing.txt"}, None),
+        (
+            {
+                "type": "artifact_hash",
+                "mode": "executable",
+                "path": "src/missing.txt",
+                "sha256": "sha256:" + "0" * 64,
+            },
+            None,
+        ),
+        (
+            {
+                "type": "command",
+                "mode": "executable",
+                "command": "python3 -c 'import time; time.sleep(2)'",
+                "timeout": 1,
+            },
+            "timed_out",
+        ),
+    ],
+)
+def test_validator_negative_outcome_creates_repairable_evaluation(
+    tmp_path: Path,
+    validator: dict,
+    expected_runtime_detail: str | None,
+) -> None:
+    _, store, task = _designed_store(tmp_path, managed=False)
+    contract = _contract(managed=False)
+    contract["verification_spec"]["validators"] = [validator]
+    store.lock_contract(task["task_id"], contract, expected_version=2, revision_reason="exercise a negative outcome")
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="run negative validator", input_snapshot={})
+    store.seal_attempt(attempt["attempt_id"], expected_version=4)
+
+    evaluation = store.evaluate_verify(attempt["attempt_id"])
+
+    assert evaluation["decision"] == "rejected"
+    result = evaluation["payload"]["validator_results"][0]
+    assert result["passed"] is False
+    if expected_runtime_detail:
+        assert result[expected_runtime_detail] is True
+    projection = store.control_projection(task["task_id"])
+    assert projection["status"] == "verification_failed"
+    assert projection["next_transition"] == "start_repair_attempt"
+    recovery = store.recovery(task["task_id"])
+    assert recovery["next_transition"] == "start_repair_attempt"
+    repair = store.start_attempt(
+        task["task_id"],
+        expected_version=evaluation["task_state_version"],
+        plan="repair the failed validator target",
+        input_snapshot={},
+    )
+    assert repair["task_id"] == task["task_id"]
+    assert len(store.tasks()) == 1
+
+
 def test_required_authority_uses_one_linear_review_chain(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     contract = _contract(managed=False)
@@ -253,6 +378,42 @@ def test_content_preserving_commit_keeps_accepted_task_aligned(tmp_path: Path) -
     assert store.integrity(task["task_id"])["passed"] is True
 
 
+def test_completed_default_task_does_not_block_later_direct_git_work(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="finish historical claim", input_snapshot={})
+    store.seal_attempt(attempt["attempt_id"], expected_version=3)
+    evaluation = store.evaluate_verify(attempt["attempt_id"])
+    store.accept(task["task_id"], evaluation["evaluation_id"], expected_version=5)
+
+    (repo / "src" / "later.txt").write_text("ordinary direct work\n", encoding="utf-8")
+
+    assert store.integrity()["passed"] is True
+    recovery = store.recovery(task["task_id"])
+    assert recovery["status"] == "stale"
+    assert recovery["next_action"] == "none"
+    assert recovery["blocker"] is None
+    explicit = store.integrity(task["task_id"])
+    assert explicit["passed"] is False
+    assert any("workspace alignment is ahead" in error for error in explicit["errors"])
+
+
+def test_active_attempt_ahead_is_pending_reconciliation_not_integrity_violation(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="normal active work", input_snapshot={})
+    (repo / "src" / "work.txt").write_text("in progress\n", encoding="utf-8")
+
+    result = store.integrity(task["task_id"])
+
+    assert result["status"] == "not_yet_reconciled"
+    assert result["passed"] is True
+    assert result["reconciliation_required"] is True
+    assert result["violations"] == []
+    assert result["workspace_alignment"] == "ahead"
+    recovery = store.recovery(task["task_id"])
+    assert recovery["active_attempt"]["attempt_id"] == attempt["attempt_id"]
+    assert recovery["next_action"] == "continue the active Attempt"
+
+
 def test_finish_attempt_composes_checkpoint_evidence_verification_and_acceptance(tmp_path: Path) -> None:
     repo, store, task = _designed_store(tmp_path)
     attempt = store.start_attempt(task["task_id"], expected_version=2, plan="routine repair", input_snapshot={})
@@ -267,15 +428,53 @@ def test_finish_attempt_composes_checkpoint_evidence_verification_and_acceptance
     assert result["task"]["lifecycle_status"] == "completed"
 
 
-def test_finish_does_not_infer_ownership_for_undeclared_paths(tmp_path: Path) -> None:
+def test_finish_auto_reconciles_current_attempt_delta(tmp_path: Path) -> None:
     repo, store, task = _designed_store(tmp_path)
     attempt = store.start_attempt(task["task_id"], expected_version=2, plan="routine repair", input_snapshot={})
     (repo / "src" / "out.txt").write_text("managed\n", encoding="utf-8")
     (repo / "src" / "extra.txt").write_text("undeclared\n", encoding="utf-8")
 
-    with pytest.raises(ConflictError, match="classify changed paths"):
+    result = store.finish_attempt(attempt["attempt_id"])
+
+    assert result["checkpoint"]["payload"]["claimed_paths"] == ["src/extra.txt", "src/out.txt"]
+    assert [item["path"] for item in result["evidence"]] == ["src/out.txt"]
+    assert result["task"]["lifecycle_status"] == "completed"
+
+
+def test_finish_auto_reconciliation_still_enforces_contract_scope(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="respect scope", input_snapshot={})
+    (repo / "outside.txt").write_text("outside declared src/tests scope\n", encoding="utf-8")
+
+    with pytest.raises(ConflictError, match="outside execution_scope"):
         store.finish_attempt(attempt["attempt_id"])
-    assert store.task(task["task_id"])["active_attempt_id"] == attempt["attempt_id"]
+
+    assert store.attempt(attempt["attempt_id"])["status"] == "open"
+
+
+def test_finish_resumes_after_seal_without_duplicate_records(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="resumable finish", input_snapshot={})
+    (repo / "src" / "out.txt").write_text("done\n", encoding="utf-8")
+    original_verify = store.evaluate_verify
+
+    def interrupted_verify(attempt_id: str) -> dict:
+        raise DurableError(f"temporary verifier interruption for {attempt_id}")
+
+    store.evaluate_verify = interrupted_verify  # type: ignore[method-assign]
+    with pytest.raises(DurableError, match="temporary verifier interruption"):
+        store.finish_attempt(attempt["attempt_id"])
+    assert store.attempt(attempt["attempt_id"])["status"] == "sealed"
+
+    store.evaluate_verify = original_verify  # type: ignore[method-assign]
+    finished = store.finish_attempt(attempt["attempt_id"])
+    repeated = store.finish_attempt(attempt["attempt_id"])
+
+    assert finished["task"]["lifecycle_status"] == "completed"
+    assert repeated["task"]["lifecycle_status"] == "completed"
+    assert repeated["evaluation"]["evaluation_id"] == finished["evaluation"]["evaluation_id"]
+    assert len([record for record in store.records(attempt["attempt_id"]) if record["type"] == "checkpoint"]) == 1
+    assert store.protocol_activity(task["task_id"])["evaluations"] == 1
 
 
 def test_finish_keeps_failed_verification_and_authority_in_same_task(tmp_path: Path) -> None:
@@ -309,6 +508,189 @@ def test_finish_keeps_failed_verification_and_authority_in_same_task(tmp_path: P
     assert pending["task"]["lifecycle_status"] == "open"
     assert pending["task"]["acceptance_head_id"] == pending["evaluation"]["evaluation_id"]
     assert review_store.acceptance_status(review_task["task_id"])["status"] == "mechanically_verified_pending_reviewer"
+    review_store.review(pending["evaluation"]["evaluation_id"], decision="approved", reviewer="independent")
+    completed = review_store.finish_attempt(review_attempt["attempt_id"])
+    assert completed["task"]["lifecycle_status"] == "completed"
+    assert completed["next_transition"] == "none"
+
+
+def test_latest_aborted_attempt_is_adopted_with_path_provenance(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    first = store.start_attempt(task["task_id"], expected_version=2, plan="obsolete contract", input_snapshot={})
+    (repo / "src" / "out.txt").write_text("carry forward\n", encoding="utf-8")
+    store.abort_attempt(first["attempt_id"], reason="contract revised after intentional workspace updates")
+
+    retry = store.start_attempt(
+        task["task_id"],
+        expected_version=4,
+        plan="continue after contract correction",
+        input_snapshot={},
+    )
+    assert retry["status"] == "open"
+    assert retry["baseline_stamp"]["changed_paths"] == ["src/out.txt"]
+    provenance = retry["carried_forward"]
+    assert provenance["source_attempt_id"] == first["attempt_id"]
+    assert provenance["source_status"] == "aborted"
+    assert [item["path"] for item in provenance["paths"]] == ["src/out.txt"]
+    assert provenance["paths"][0]["source_state"] is None
+    assert provenance["paths"][0]["adopted_state"].startswith("file:")
+
+
+def test_checkpointed_aborted_attempt_remains_explicitly_carried_forward(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    first = store.start_attempt(task["task_id"], expected_version=2, plan="checkpoint before retry", input_snapshot={})
+    (repo / "src" / "out.txt").write_text("carried checkpoint\n", encoding="utf-8")
+    store.record_checkpoint(
+        first["attempt_id"],
+        {
+            "claimed_paths": ["src/out.txt"],
+            "external_ref": {"locator": "/runs/source", "checkpoint_identity": "checkpoint-3"},
+        },
+        expected_version=3,
+    )
+    store.abort_attempt(first["attempt_id"], reason="retry after a valid checkpoint")
+
+    current = store.task(task["task_id"])
+    retry = store.start_attempt(
+        task["task_id"],
+        expected_version=current["state_version"],
+        plan="continue checkpointed work",
+        input_snapshot={},
+    )
+
+    assert retry["carried_forward"]["source_attempt_id"] == first["attempt_id"]
+    assert retry["carried_forward"]["source_checkpoint_hash"] is not None
+    assert [item["path"] for item in retry["carried_forward"]["paths"]] == ["src/out.txt"]
+    assert store.external_ref(task["task_id"]) == {
+        "locator": "/runs/source",
+        "checkpoint_identity": "checkpoint-3",
+    }
+
+
+def test_carried_forward_workspace_must_fit_the_current_contract_scope(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    broad = _contract(managed=False)
+    broad["execution_scope"]["paths"].append("outside.txt")
+    store.lock_contract(task["task_id"], broad, expected_version=2, revision_reason="temporarily broaden scope")
+    first = store.start_attempt(task["task_id"], expected_version=3, plan="broad work", input_snapshot={})
+    (repo / "outside.txt").write_text("must not cross the revised boundary\n", encoding="utf-8")
+    store.abort_attempt(first["attempt_id"], reason="narrow the contract before retry")
+
+    current = store.task(task["task_id"])
+    narrow = _contract(managed=False)
+    store.lock_contract(
+        task["task_id"],
+        narrow,
+        expected_version=current["state_version"],
+        revision_reason="remove outside.txt from the acceptance target",
+    )
+    current = store.task(task["task_id"])
+
+    with pytest.raises(ConflictError, match=r"carried-forward paths.*outside\.txt"):
+        store.start_attempt(
+            task["task_id"],
+            expected_version=current["state_version"],
+            plan="respect the narrowed scope",
+            input_snapshot={},
+        )
+
+    assert store.task(task["task_id"])["active_attempt_id"] is None
+
+
+def test_stale_sealed_candidate_can_be_superseded_without_reverting_work(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=False)
+    first = store.start_attempt(task["task_id"], expected_version=2, plan="first candidate", input_snapshot={})
+    path = repo / "src" / "out.txt"
+    path.write_text("first\n", encoding="utf-8")
+    store.record_checkpoint(first["attempt_id"], {"claimed_paths": ["src/out.txt"]}, expected_version=3)
+    store.seal_attempt(first["attempt_id"], expected_version=4)
+    path.write_text("repair before retry\n", encoding="utf-8")
+
+    retry = store.start_attempt(task["task_id"], expected_version=5, plan="continue current repair", input_snapshot={})
+
+    assert retry["carried_forward"]["source_attempt_id"] == first["attempt_id"]
+    assert retry["carried_forward"]["source_status"] == "sealed"
+    assert [item["path"] for item in retry["carried_forward"]["paths"]] == ["src/out.txt"]
+
+
+def test_protocol_activity_warns_only_after_routine_churn(tmp_path: Path) -> None:
+    _, store, task = _designed_store(tmp_path, managed=False)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="semantic checkpoints", input_snapshot={})
+    for expected_version in range(3, 7):
+        store.record_checkpoint(attempt["attempt_id"], {"observations": [f"checkpoint {expected_version}"]}, expected_version=expected_version)
+
+    activity = store.protocol_activity(task["task_id"])
+
+    assert activity["expected_agent_lifecycle_commands"] == 2
+    assert activity["checkpoints"] == 4
+    assert activity["routing_warning"] is not None
+
+
+def test_review_handoff_and_active_chain_are_derived_only_when_reviewer_is_pending(tmp_path: Path) -> None:
+    repo, store, task = _designed_store(tmp_path, managed=True)
+    high = _contract(managed=True)
+    high["assurance"] = {
+        "tier": "high_assurance",
+        "trigger_ids": ["semantic_claim"],
+        "rationale": ["The executable oracle is incomplete."],
+    }
+    store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="review the final claim")
+    current = store.task(task["task_id"])
+    attempt = store.start_attempt(task["task_id"], expected_version=current["state_version"], plan="prepare exact claim", input_snapshot={})
+    (repo / "src" / "out.txt").write_text("review me\n", encoding="utf-8")
+
+    pending = store.finish_attempt(attempt["attempt_id"])
+
+    assert pending["next_transition"] == "review:reviewer"
+    assert [item["kind"] for item in pending["active_chain"]] == ["verification"]
+    handoff = pending["review_handoff"]
+    assert handoff["exact_subject"]["evaluation_id"] == pending["evaluation"]["evaluation_id"]
+    assert handoff["review_focus"]["trigger_ids"] == ["semantic_claim"]
+    assert handoff["claimed_paths"] == ["src/out.txt"]
+    assert handoff["evidence"][0]["path"] == "src/out.txt"
+    assert "stdout" not in handoff["validator_results"][0]
+    recovery = store.recovery(task["task_id"])
+    assert recovery["review_handoff"] == handoff
+
+    review = store.review(
+        pending["evaluation"]["evaluation_id"],
+        decision="approved",
+        reviewer="fresh-reviewer",
+        report=_review_report(),
+    )
+    assert [item["evaluation_id"] for item in store.active_evaluation_chain(task["task_id"])] == [
+        pending["evaluation"]["evaluation_id"],
+        review["evaluation_id"],
+    ]
+    assert store.review_handoff(task["task_id"]) is None
+
+
+def test_external_ref_is_optional_recovery_metadata_not_acceptance_state(tmp_path: Path) -> None:
+    _, store, task = _designed_store(tmp_path, managed=False)
+    attempt = store.start_attempt(task["task_id"], expected_version=2, plan="track an external run", input_snapshot={})
+    store.record_checkpoint(
+        attempt["attempt_id"],
+        {
+            "observations": ["external process is owned by the project runtime"],
+            "external_ref": {"locator": "/runs/train-42", "checkpoint_identity": "epoch-7-sha256:abc"},
+        },
+        expected_version=3,
+    )
+
+    assert store.external_ref(task["task_id"]) == {
+        "locator": "/runs/train-42",
+        "checkpoint_identity": "epoch-7-sha256:abc",
+    }
+    recovery = store.recovery(task["task_id"])
+    assert recovery["external_ref"] == store.external_ref(task["task_id"])
+    assert recovery["next_action"] == "continue the active Attempt"
+
+    with pytest.raises(ValueError, match="unsupported fields"):
+        store.record_checkpoint(
+            attempt["attempt_id"],
+            {"external_ref": {"locator": "/runs/train-42", "last_completed_epoch": 7}},
+            expected_version=4,
+        )
 
 
 def test_new_contracts_normalize_assurance_and_legacy_contracts_remain_readable(tmp_path: Path) -> None:
@@ -329,7 +711,7 @@ def test_new_contracts_normalize_assurance_and_legacy_contracts_remain_readable(
     assert store.assurance_state(task["task_id"])["legacy"] is True
 
 
-def test_high_assurance_requires_structured_fresh_context_review(tmp_path: Path) -> None:
+def test_high_assurance_requires_structured_review_without_host_attestation(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     contract = _contract(managed=False)
     contract["assurance"] = {
@@ -338,25 +720,23 @@ def test_high_assurance_requires_structured_fresh_context_review(tmp_path: Path)
         "rationale": ["A fresh context must inspect the semantic boundary."],
     }
     store.lock_contract(task["task_id"], contract, expected_version=2, revision_reason="raise assurance")
-    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="high assurance", input_snapshot={}, host_context=_host_context("worker-context"))
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="high assurance", input_snapshot={})
     sealed = store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
     assert verification["payload"]["required_authorities"] == ["reviewer"]
 
-    with pytest.raises(ConflictError, match="distinct host context"):
-        store.review(verification["evaluation_id"], decision="approved", reviewer="reviewer", report=_review_report(), host_context=_host_context("worker-context"))
     with pytest.raises(ValueError, match="structured report"):
-        store.review(verification["evaluation_id"], decision="approved", reviewer="reviewer", host_context=_host_context("reviewer-context"))
+        store.review(verification["evaluation_id"], decision="approved", reviewer="reviewer")
 
     review = store.review(
         verification["evaluation_id"],
         decision="approved",
         reviewer="reviewer",
         report=_review_report(),
-        host_context=_host_context("reviewer-context"),
     )
     report = review["payload"]["review_report"]
-    assert review["payload"]["independence"] == "verified"
+    assert review["payload"]["context_id"] is None
+    assert "independence" not in review["payload"]
     assert report["exact_evaluation_subject"]["content_hash"] == verification["content_hash"]
     assert report["governing_artifact_hashes"]["attempt_hash"] == sealed["execution_hash"]
     completed = store.accept(task["task_id"], review["evaluation_id"], expected_version=7)
@@ -385,7 +765,7 @@ def test_active_evaluation_head_rejects_siblings_and_stale_acceptance(tmp_path: 
     assert store.evaluation(needs_changes["evaluation_id"])["decision"] == "needs_changes"
 
 
-def test_tier_three_is_sticky_until_evidence_bound_contract_revision(tmp_path: Path) -> None:
+def test_tier_three_is_sticky_until_review_bound_contract_revision(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     high = _contract(managed=False)
     high["assurance"] = {
@@ -393,14 +773,8 @@ def test_tier_three_is_sticky_until_evidence_bound_contract_revision(tmp_path: P
         "trigger_ids": ["semantic_change_incomplete_oracle"],
         "rationale": ["The semantic oracle is incomplete."],
     }
-    high["verification_spec"]["validators"][0].update(
-        {
-            "validator_id": "complete_semantic_oracle",
-            "resolves_trigger_ids": ["semantic_change_incomplete_oracle"],
-        }
-    )
     store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="observe semantic risk")
-    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="make the oracle complete", input_snapshot={}, host_context=_host_context("worker"))
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="review the semantic gap", input_snapshot={})
     store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
 
@@ -413,14 +787,20 @@ def test_tier_three_is_sticky_until_evidence_bound_contract_revision(tmp_path: P
     with pytest.raises(InvalidTransitionError, match="sticky"):
         store.lock_contract(task["task_id"], lower, expected_version=6, revision_reason="premature downgrade")
 
+    review = store.review(
+        verification["evaluation_id"],
+        decision="approved",
+        reviewer="semantic-reviewer",
+        report=_review_report(resolved=["semantic_change_incomplete_oracle"]),
+    )
     lower["assurance"]["resolved_trigger_ids"] = ["semantic_change_incomplete_oracle"]
-    lower["assurance"]["resolution_evaluation_id"] = verification["evaluation_id"]
-    store.lock_contract(task["task_id"], lower, expected_version=6, revision_reason="bind completed executable proof")
+    lower["assurance"]["resolution_evaluation_id"] = review["evaluation_id"]
+    store.lock_contract(task["task_id"], lower, expected_version=review["task_state_version"], revision_reason="bind Review feedback")
     assurance = store.assurance_state(task["task_id"])
     assert assurance["effective_tier"] == "governed"
     assert assurance["unresolved_trigger_ids"] == []
     with pytest.raises(ConflictError, match="active Evaluation head"):
-        store.accept(task["task_id"], verification["evaluation_id"], expected_version=7)
+        store.accept(task["task_id"], review["evaluation_id"], expected_version=review["task_state_version"] + 1)
 
 
 def test_structured_review_report_is_part_of_evaluation_hash(tmp_path: Path) -> None:
@@ -432,10 +812,10 @@ def test_structured_review_report_is_part_of_evaluation_hash(tmp_path: Path) -> 
         "rationale": ["The semantic relation needs a fresh observation."],
     }
     store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="require report")
-    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="review", input_snapshot={}, host_context=_host_context("worker"))
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="review", input_snapshot={})
     store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
-    review = store.review(verification["evaluation_id"], decision="approved", reviewer="reviewer", report=_review_report(), host_context=_host_context("reviewer"))
+    review = store.review(verification["evaluation_id"], decision="approved", reviewer="reviewer", report=_review_report())
     tampered = dict(review["payload"])
     tampered["review_report"] = {**tampered["review_report"], "nonblocking_risks": ["changed after review"]}
     store.conn.execute("UPDATE evaluations SET content_json=? WHERE evaluation_id=?", (json.dumps(tampered), review["evaluation_id"]))
@@ -598,11 +978,11 @@ def test_plain_validator_cannot_resolve_sticky_trigger(tmp_path: Path) -> None:
         "resolved_trigger_ids": ["semantic_gap"],
         "resolution_evaluation_id": verification["evaluation_id"],
     }
-    with pytest.raises(InvalidTransitionError, match="lacks normalized proof"):
+    with pytest.raises(InvalidTransitionError, match="Review does not resolve"):
         store.lock_contract(task["task_id"], lower, expected_version=verification["task_state_version"], revision_reason="unmapped test is insufficient")
 
 
-def test_trigger_resolution_requires_proof_for_every_named_trigger(tmp_path: Path) -> None:
+def test_review_resolution_must_name_every_trigger(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     high = _contract(managed=False)
     high["assurance"] = {
@@ -610,15 +990,18 @@ def test_trigger_resolution_requires_proof_for_every_named_trigger(tmp_path: Pat
         "trigger_ids": ["semantic_a", "semantic_b"],
         "rationale": ["Two semantic gaps remain."],
     }
-    high["verification_spec"]["validators"][0].update(
-        {"validator_id": "oracle_a", "resolves_trigger_ids": ["semantic_a"]}
-    )
     store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="record two gaps")
     attempt = store.start_attempt(task["task_id"], expected_version=3, plan="resolve one gap", input_snapshot={})
     store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
+    review = store.review(
+        verification["evaluation_id"],
+        decision="approved",
+        reviewer="semantic-reviewer",
+        report=_review_report(resolved=["semantic_a"]),
+    )
     assert store.control_projection(task["task_id"])["resolved_trigger_proofs"] == {
-        "semantic_a": ["validator:oracle_a"]
+        "semantic_a": [f"evaluation:{review['evaluation_id']}"]
     }
 
     lower = _contract(managed=False)
@@ -627,13 +1010,13 @@ def test_trigger_resolution_requires_proof_for_every_named_trigger(tmp_path: Pat
         "trigger_ids": [],
         "rationale": ["Attempt to resolve both gaps."],
         "resolved_trigger_ids": ["semantic_a", "semantic_b"],
-        "resolution_evaluation_id": verification["evaluation_id"],
+        "resolution_evaluation_id": review["evaluation_id"],
     }
     with pytest.raises(InvalidTransitionError, match="semantic_b"):
-        store.lock_contract(task["task_id"], lower, expected_version=verification["task_state_version"], revision_reason="partial proof must fail")
+        store.lock_contract(task["task_id"], lower, expected_version=review["task_state_version"], revision_reason="partial Review must fail")
 
 
-def test_verified_structured_review_can_resolve_named_trigger(tmp_path: Path) -> None:
+def test_structured_review_can_resolve_named_trigger(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     high = _contract(managed=False)
     high["assurance"] = {
@@ -642,7 +1025,7 @@ def test_verified_structured_review_can_resolve_named_trigger(tmp_path: Path) ->
         "rationale": ["A fresh context must close the semantic gap."],
     }
     store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="require semantic proof")
-    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="prepare review", input_snapshot={}, host_context=_host_context("worker"))
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="prepare review", input_snapshot={})
     store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
     review = store.review(
@@ -650,7 +1033,6 @@ def test_verified_structured_review_can_resolve_named_trigger(tmp_path: Path) ->
         decision="approved",
         reviewer="fresh-reviewer",
         report=_review_report(resolved=["semantic_review_gap"]),
-        host_context=_host_context("reviewer"),
     )
     assert store.control_projection(task["task_id"])["resolved_trigger_proofs"] == {
         "semantic_review_gap": [f"evaluation:{review['evaluation_id']}"]
@@ -668,7 +1050,7 @@ def test_verified_structured_review_can_resolve_named_trigger(tmp_path: Path) ->
     assert store.assurance_state(task["task_id"])["effective_tier"] == "governed"
 
 
-def test_manual_context_is_unverified_and_cannot_complete_tier_three(tmp_path: Path) -> None:
+def test_optional_context_labels_never_gate_tier_three(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
     high = _contract(managed=False)
     high["assurance"] = {
@@ -677,9 +1059,8 @@ def test_manual_context_is_unverified_and_cannot_complete_tier_three(tmp_path: P
         "rationale": ["The semantic claim needs a decorrelated observation."],
     }
     store.lock_contract(task["task_id"], high, expected_version=2, revision_reason="require fresh context")
-    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="manual labels", input_snapshot={}, context_id="worker-label")
-    assert attempt["worker_context"]["source"] == "manual"
-    assert attempt["worker_context"]["verified"] is False
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="optional labels", input_snapshot={}, context_id="worker-label")
+    assert attempt["worker_context"] == "worker-label"
     store.seal_attempt(attempt["attempt_id"], expected_version=4)
     verification = store.evaluate_verify(attempt["attempt_id"])
     review = store.review(
@@ -689,40 +1070,25 @@ def test_manual_context_is_unverified_and_cannot_complete_tier_three(tmp_path: P
         report=_review_report(),
         context_id="reviewer-label",
     )
-    assert review["payload"]["context"]["source"] == "manual"
-    assert review["payload"]["independence"] == "unverified"
+    assert review["payload"]["context_id"] == "reviewer-label"
+    assert "independence" not in review["payload"]
     projection = store.control_projection(task["task_id"])
-    assert projection["status"] == "high_assurance_review_unverified"
-    assert projection["next_transition"] == "start_repair_attempt"
-    with pytest.raises(InvalidTransitionError, match="start_repair_attempt"):
-        store.accept(task["task_id"], review["evaluation_id"], expected_version=review["task_state_version"])
-    repaired = store.start_attempt(
-        task["task_id"],
-        expected_version=review["task_state_version"],
-        plan="retry with host attestation",
-        input_snapshot={},
-    )
-    assert repaired["status"] == "open"
+    assert projection["status"] == "acceptance_ready"
+    completed = store.accept(task["task_id"], review["evaluation_id"], expected_version=review["task_state_version"])
+    assert completed["lifecycle_status"] == "completed"
 
 
-def test_contract_rejects_ambiguous_trigger_resolvers(tmp_path: Path) -> None:
+def test_v3_2_validator_proof_fields_are_readable_but_inert(tmp_path: Path) -> None:
     _, store, task = _designed_store(tmp_path, managed=False)
-    manual = _contract(managed=False)
-    manual["verification_spec"]["validators"].append(
-        {
-            "type": "manual_acceptance",
-            "mode": "manual",
-            "validator_id": "manual-proof",
-            "resolves_trigger_ids": ["semantic_gap"],
-        }
+    legacy = _contract(managed=False)
+    legacy["verification_spec"]["validators"][0].update(
+        {"validator_id": "legacy-oracle", "resolves_trigger_ids": ["legacy-trigger"]}
     )
-    with pytest.raises(ValueError, match="manual validators cannot resolve"):
-        store.lock_contract(task["task_id"], manual, expected_version=2, revision_reason="invalid manual proof")
-
-    duplicate = _contract(managed=False)
-    duplicate["verification_spec"]["validators"] = [
-        {"type": "command", "mode": "executable", "command": "true", "validator_id": "same"},
-        {"type": "command", "mode": "executable", "command": "true", "validator_id": "same"},
-    ]
-    with pytest.raises(ValueError, match="validator_id must be unique"):
-        store.lock_contract(task["task_id"], duplicate, expected_version=2, revision_reason="duplicate proof identity")
+    store.lock_contract(task["task_id"], legacy, expected_version=2, revision_reason="read v3.2 fields")
+    attempt = store.start_attempt(task["task_id"], expected_version=3, plan="legacy compatibility", input_snapshot={})
+    store.seal_attempt(attempt["attempt_id"], expected_version=4)
+    verification = store.evaluate_verify(attempt["attempt_id"])
+    result = verification["payload"]["validator_results"][0]
+    assert result["passed"] is True
+    assert "validator_id" not in result
+    assert "resolves_trigger_ids" not in result

@@ -1,6 +1,6 @@
 # MetaLoop v3.2 认知可靠性升级规范
 
-状态：已实施  
+状态：已实施并在 v3.4 implementation-first 版本中进一步简化
 日期：2026-07-22
 
 ## 1. 核心思想
@@ -19,6 +19,10 @@ v3.2 同时修复两种不对称：
 升级不增加第二套 lifecycle、Task ontology、scheduler、daemon、transcript store 或 vector memory。数据库 `schema_version` 保持 3。
 
 ## 3. Assurance 路由
+
+默认路由是 Git + 项目 verifier：普通局部实现、文档同步、测试修复和可逆小改动不创建
+MetaLoop Task。只有需要跨上下文恢复、任务切换、managed Evidence、正式封存或真实语义
+Review 时才进入 Tier 1-3。
 
 | Tier | 名称 | 行为 |
 | --- | --- | --- |
@@ -61,11 +65,14 @@ v3.2 同时修复两种不对称：
 - `effective_tier` 由当前声明和未解决 Tier 3 trigger 推导；
 - Tier 3 trigger 对当前 acceptance target 保持 sticky；
 - 降级必须使用新的 ContractRevision，列出全部 resolved triggers，提供 rationale，并引用旧 Contract 下的 approved active Evaluation；
-- 每个 resolved trigger 必须有规范化 proof：passing executable validator 的稳定
-  `validator_id` + `resolves_trigger_ids` 映射，或 host-verified structured reviewer
-  Evaluation 的 `resolved_trigger_ids`；普通 true、未映射 Evidence、manual validator 和
-  unverified Review 均不计入；
+- 每个 resolved trigger 必须由 approved structured reviewer Evaluation 的
+  `resolved_trigger_ids` 明确列出；普通 passing validator 只作为机械证据，不自动解除
+  语义风险记忆；
 - 新 ContractRevision 清除旧 active Evaluation pointer，旧 Attempt/Evaluation 保留为历史但不能再 acceptance。
+- `task begin` 的 Task、ContractRevision、selection 和 Attempt 创建在同一事务中完成；
+  Contract/validator 输入错误会整体回滚，不遗留空 Task。
+- 新 Contract 中 user authority 只能由 `assurance.required_authorities` 声明为最终决策，
+  不能由 manual validator 或 resource gate 旁路生成。
 
 ## 5. Active Evaluation Head
 
@@ -118,13 +125,13 @@ resolved_trigger_ids
 decision
 ```
 
-内核自动加入 exact parent Evaluation、Contract、Attempt 和 Evidence identities，以及 reviewer context provenance 和 independence projection。规范化报告直接进入 Review Evaluation payload 和 content hash，不允许用 DecisionEvent sidecar 代替。`approved` 报告不能保留 blocking findings。
+内核自动加入 exact parent Evaluation、Contract、Attempt 和 Evidence identities，以及可选
+diagnostic context label。规范化报告直接进入 Review Evaluation payload 和 content hash，不
+允许用 DecisionEvent sidecar 代替。`approved` 报告不能保留 blocking findings。
 
-Context provenance 分三类：host adapter 或 `METALOOP_HOST_CONTEXT_ID` 产生
-`host/verified`；显式 CLI `--context-id` 产生 `manual/unverified`；缺失为
-`unavailable/unverified`。旧记录没有显式 source/verified 字段时按 unverified 读取。
-Tier 3 只有两个不同的 verified host context 才满足 independence。无法确认时允许通过同一
-Task 的 repair Attempt 继续开发，但不能完成 Tier 3 acceptance。
+Context metadata 仅用于诊断和恢复时的人类判断。显式 CLI `--context-id` 可以记录标签，
+缺失也不影响普通 Tier 3 acceptance；MetaLoop 不要求 host attestation 或 independence
+证明，因为默认信任 Codex，Review 的目的只是降低相关性盲点。
 
 ## 7. Read-Only Git Observation
 
@@ -149,7 +156,6 @@ verification_failed
 mechanically_verified_pending_reviewer
 review_needs_changes
 evaluation_chain_invalid
-high_assurance_review_unverified
 reviewed_ready_for_user_acceptance
 acceptance_ready
 accepted
@@ -157,11 +163,9 @@ accepted
 
 现有 `observe --format full|brief` 保留，默认仍为 `full`，不新增平行 `--full`。brief 输出增加 `control_status`、`authority_sequence`、`pending_authorities`、`next_transition`、`next_action`、`blocker`、`resolved_trigger_proofs` 和 `assurance`，原字段保持不变。
 
-Tier 3 Review 使用：
+Tier 3 Review 使用（context label 可选）：
 
 ```bash
-METALOOP_HOST_CONTEXT_ID=<host_context_id> \
-METALOOP_HOST_CONTEXT_PROVIDER=<host_provider> \
 python3 "$KERNEL" --workspace . evaluate review \
   --evaluation <active_head_id> \
   --decision approved \
@@ -182,7 +186,10 @@ Recovery exposes one legal, CAS-protected next transition.
 No trigger is resolved without an explicit per-trigger proof mapping.
 ```
 
-内核不理解任意项目的领域语义。正确识别 trigger 仍由 Skill、host policy 和项目 validator 负责。v3.2 强制执行已声明或已提升的 assurance，不宣称消除所有分类遗漏。
+内核不理解任意项目的领域语义。项目 verifier 和测试负责技术正确性，MetaLoop 只记录
+完成证明、恢复状态和必要 Review，不在 SQLite 中复制项目 schema 或领域检查。正确识别
+trigger 仍由 Skill、host policy 和项目 validator 负责。v3.2 强制执行已声明或已提升的
+assurance，不宣称消除所有分类遗漏。
 
 ## 10. 校准指标
 

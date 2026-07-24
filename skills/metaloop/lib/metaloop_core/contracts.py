@@ -25,7 +25,6 @@ def normalize_contract(workspace: str | Path, payload: dict[str, Any]) -> dict[s
     content["schema"] = CONTRACT_SCHEMA
     content["version"] = CONTRACT_VERSION
     content["assurance"] = _normalize_assurance(content.get("assurance"))
-    content["verification_spec"] = _normalize_verification_spec(content.get("verification_spec"))
     scope = dict(content.get("execution_scope") or {})
     scope["paths"] = [_safe_relative(path, "execution_scope.paths") for path in scope.get("paths", [])]
     stable_inputs = []
@@ -78,29 +77,58 @@ def validate_contract(payload: Any) -> list[str]:
         if not isinstance(validators, list):
             errors.append("verification_spec.validators must be a list")
         else:
-            validator_ids: set[str] = set()
             for index, validator in enumerate(validators):
                 label = f"verification_spec.validators[{index}]"
                 if not isinstance(validator, dict):
                     errors.append(f"{label} must be an object")
                     continue
-                validator_id = validator.get("validator_id")
-                if validator_id is not None:
-                    if not isinstance(validator_id, str) or not validator_id.strip():
-                        errors.append(f"{label}.validator_id must be a non-empty string")
-                    elif validator_id in validator_ids:
-                        errors.append(f"{label}.validator_id must be unique")
-                    else:
-                        validator_ids.add(validator_id)
-                resolves = validator.get("resolves_trigger_ids", [])
-                if not isinstance(resolves, list) or any(not isinstance(item, str) or not item.strip() for item in resolves):
-                    errors.append(f"{label}.resolves_trigger_ids must be a list of non-empty strings")
-                elif resolves and not validator_id:
-                    errors.append(f"{label}.resolves_trigger_ids require validator_id")
-                if resolves and validator.get("mode") == "manual":
-                    errors.append(f"{label} manual validators cannot resolve assurance triggers")
+                kind = validator.get("type")
+                mode = validator.get("mode", "executable")
+                if kind not in {"command", "file_exists", "artifact_hash", "manual_acceptance"}:
+                    errors.append(f"{label}.type is unsupported")
+                if mode not in {"executable", "manual"}:
+                    errors.append(f"{label}.mode must be executable or manual")
+                if validator.get("type") == "manual_acceptance" and mode != "manual":
+                    errors.append(f"{label} manual_acceptance validators require mode=manual")
+                if mode == "manual" and kind != "manual_acceptance":
+                    errors.append(f"{label} mode=manual requires type=manual_acceptance")
+                if kind == "command" and (not isinstance(validator.get("command"), str) or not validator["command"].strip()):
+                    errors.append(f"{label}.command must be a non-empty string")
+                if kind == "command":
+                    timeout = validator.get("timeout", 600)
+                    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+                        errors.append(f"{label}.timeout must be a positive integer")
+                if kind in {"file_exists", "artifact_hash"}:
+                    path = validator.get("path")
+                    if not isinstance(path, str) or not path.strip():
+                        errors.append(f"{label}.path must be a non-empty string")
+                    elif not _is_safe_relative(path):
+                        errors.append(f"{label}.path must be a safe workspace-relative path")
+                if kind == "artifact_hash" and not _is_sha256(validator.get("sha256")):
+                    errors.append(f"{label}.sha256 must be a sha256 digest")
+                if validator.get("authority") == "user":
+                    errors.append(
+                        f"{label} cannot grant user authority; reserve final user authority in contract.assurance"
+                    )
+                elif mode == "manual" and validator.get("authority") not in {None, "reviewer"}:
+                    errors.append(f"{label}.authority must be reviewer for manual validation")
+                elif mode != "manual" and validator.get("authority") is not None:
+                    errors.append(f"{label}.authority is only valid for manual validation")
+                if validator.get("requires_user_confirmation"):
+                    errors.append(
+                        f"{label} cannot require user confirmation; reserve final user authority in contract.assurance"
+                    )
         if not isinstance(verification.get("resource_gates", []), list):
             errors.append("verification_spec.resource_gates must be a list")
+        else:
+            for index, gate in enumerate(verification["resource_gates"]):
+                if not isinstance(gate, dict):
+                    errors.append(f"verification_spec.resource_gates[{index}] must be an object")
+                    continue
+                if gate.get("requires_user_confirmation"):
+                    errors.append(
+                        f"verification_spec.resource_gates[{index}] cannot require user confirmation; reserve final user authority in contract.assurance"
+                    )
     scope = payload.get("execution_scope", {})
     if not isinstance(scope, dict):
         errors.append("contract.execution_scope must be an object")
@@ -183,30 +211,6 @@ def _legacy_assurance() -> dict[str, Any]:
         "resolved_trigger_ids": [],
         "resolution_evaluation_id": None,
     }
-
-
-def _normalize_verification_spec(value: Any) -> Any:
-    if not isinstance(value, dict):
-        return value
-    normalized = deepcopy(value)
-    validators = normalized.get("validators")
-    if isinstance(validators, list):
-        output: list[Any] = []
-        for validator in validators:
-            if not isinstance(validator, dict):
-                output.append(validator)
-                continue
-            item = dict(validator)
-            if "validator_id" in item and isinstance(item["validator_id"], str):
-                item["validator_id"] = item["validator_id"].strip()
-            if "resolves_trigger_ids" in item:
-                item["resolves_trigger_ids"] = _normalized_strings(
-                    item["resolves_trigger_ids"],
-                    "verification_spec.validators.resolves_trigger_ids",
-                )
-            output.append(item)
-        normalized["validators"] = output
-    return normalized
 
 
 def contract_hash(payload: dict[str, Any]) -> str:
@@ -308,7 +312,7 @@ def _safe_relative(value: Any, label: str = "path") -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty workspace-relative path")
     path = Path(value)
-    if path.is_absolute() or ".." in path.parts or path.as_posix() in {"", "."}:
+    if path.is_absolute() or ".." in path.parts or ".metaloop" in path.parts or path.as_posix() in {"", "."}:
         raise ValueError(f"{label} must be a safe workspace-relative path")
     return path.as_posix()
 

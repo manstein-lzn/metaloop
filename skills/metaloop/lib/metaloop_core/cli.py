@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -61,12 +60,13 @@ def _task_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) 
     create.add_argument("--depends-on", action="append", default=[])
     begin = sub.add_parser("begin", help="Create, contract, select, and start one Task.")
     begin.add_argument("--title", required=True)
-    begin.add_argument("--contract", required=True)
+    begin.add_argument("--contract", help="Explicit Tier 2/3 Contract JSON. Omit for a generated Tier 1 contract.")
+    begin.add_argument("--check", action="append", default=[], help="Project-native command for the generated Tier 1 contract.")
     begin.add_argument("--plan", required=True)
     begin.add_argument("--input-json", default="{}")
     begin.add_argument("--input-file")
     begin.add_argument("--actor", default="codex")
-    begin.add_argument("--context-id", help="Manually supplied context label; recorded as unverified.")
+    begin.add_argument("--context-id", help="Optional context label for human diagnostics.")
     begin.add_argument("--parent-task")
     begin.add_argument("--depends-on", action="append", default=[])
     begin.add_argument("--change-kind", choices=["repair", "extension", "redesign"])
@@ -127,7 +127,7 @@ def _attempt_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser
     start.add_argument("--input-json", default="{}")
     start.add_argument("--input-file")
     start.add_argument("--actor", default="codex")
-    start.add_argument("--context-id", help="Manually supplied context label; recorded as unverified.")
+    start.add_argument("--context-id", help="Optional context label for human diagnostics.")
     start.add_argument("--retry-of")
     start.add_argument("--retry-reason", default="")
     checkpoint = sub.add_parser("record-checkpoint")
@@ -142,11 +142,13 @@ def _attempt_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser
     checkpoint.add_argument("--deferred-path", action="append", default=[], metavar="PATH=REASON")
     checkpoint.add_argument("--assigned-path", action="append", default=[], metavar="PATH=TASK")
     checkpoint.add_argument("--evidence-ref", action="append", default=[])
+    checkpoint.add_argument("--external-ref", help="Optional external run or artifact locator for recovery only.")
+    checkpoint.add_argument("--external-checkpoint-identity", help="Optional identity within --external-ref.")
     evidence = sub.add_parser("evidence")
     evidence.add_argument("--attempt", required=True)
     evidence.add_argument("--path", required=True)
     evidence.add_argument("--description", default="")
-    finish = sub.add_parser("finish", help="Checkpoint, bind evidence, verify, and accept when authority permits.")
+    finish = sub.add_parser("finish", help="Reconcile, bind managed evidence, seal, verify, and resume safely if repeated.")
     finish.add_argument("--attempt", required=True)
     finish.add_argument("--completed", action="append", default=[])
     finish.add_argument("--observation", action="append", default=[])
@@ -158,6 +160,8 @@ def _attempt_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser
     finish.add_argument("--assigned-path", action="append", default=[], metavar="PATH=TASK")
     finish.add_argument("--evidence-ref", action="append", default=[])
     finish.add_argument("--evidence-path", action="append", default=[])
+    finish.add_argument("--external-ref", help="Optional external run or artifact locator for recovery only.")
+    finish.add_argument("--external-checkpoint-identity", help="Optional identity within --external-ref.")
     seal = sub.add_parser("seal")
     seal.add_argument("--attempt", required=True)
     seal.add_argument("--expected-version", required=True, type=int)
@@ -178,7 +182,7 @@ def _evaluation_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     review.add_argument("--decision", choices=["approved", "rejected", "needs_changes"], required=True)
     review.add_argument("--reviewer", required=True)
     review.add_argument("--authority", choices=["reviewer", "user"], default="reviewer")
-    review.add_argument("--context-id", help="Manually supplied reviewer context label; recorded as unverified.")
+    review.add_argument("--context-id", help="Optional reviewer context label for human diagnostics.")
     report = review.add_mutually_exclusive_group()
     report.add_argument("--report-file")
     report.add_argument("--report-json")
@@ -202,7 +206,6 @@ def _recovery_parser(commands: argparse._SubParsersAction[argparse.ArgumentParse
 
 
 def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
-    host_context = _host_context_from_environment()
     if args.command == "project":
         if args.project_command == "status":
             return _status(store)
@@ -220,7 +223,11 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
         if args.task_command == "create":
             return store.create_task(args.title, parent_task_id=args.parent_task, depends_on=args.depends_on)
         if args.task_command == "begin":
-            contract = _read_object(args.contract)
+            if args.contract and args.check:
+                raise ValueError("task begin accepts either --contract or --check, not both")
+            if any(not check.strip() for check in args.check):
+                raise ValueError("task begin --check must be a non-empty command")
+            contract = _read_object(args.contract) if args.contract else _routine_contract(args.title, args.check)
             _apply_scope_arguments(contract, args)
             inputs = _read_object(args.input_file) if args.input_file else json.loads(args.input_json)
             return store.begin_task(
@@ -230,7 +237,6 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
                 input_snapshot=inputs,
                 actor=args.actor,
                 context_id=args.context_id,
-                host_context=host_context,
                 parent_task_id=args.parent_task,
                 depends_on=args.depends_on,
             )
@@ -259,7 +265,7 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
     if args.command == "attempt":
         if args.attempt_command == "start":
             inputs = _read_object(args.input_file) if args.input_file else json.loads(args.input_json)
-            return store.start_attempt(args.task, expected_version=args.expected_version, plan=args.plan, input_snapshot=inputs, actor=args.actor, context_id=args.context_id, host_context=host_context, retry_of=args.retry_of, retry_reason=args.retry_reason)
+            return store.start_attempt(args.task, expected_version=args.expected_version, plan=args.plan, input_snapshot=inputs, actor=args.actor, context_id=args.context_id, retry_of=args.retry_of, retry_reason=args.retry_reason)
         if args.attempt_command == "record-checkpoint":
             return store.record_checkpoint(args.attempt, _checkpoint_payload(args), expected_version=args.expected_version)
         if args.attempt_command == "evidence":
@@ -281,7 +287,7 @@ def _dispatch(store: DurableStore, args: argparse.Namespace) -> Any:
             return store.evaluate_verify(args.attempt)
         if args.evaluate_command == "review":
             report = _read_object(args.report_file) if args.report_file else json.loads(args.report_json) if args.report_json else None
-            return store.review(args.evaluation, decision=args.decision, reviewer=args.reviewer, authority=args.authority, report=report, context_id=args.context_id, host_context=host_context)
+            return store.review(args.evaluation, decision=args.decision, reviewer=args.reviewer, authority=args.authority, report=report, context_id=args.context_id)
         if args.evaluate_command == "accept":
             return store.accept(args.task, args.evaluation, expected_version=args.expected_version)
         if args.evaluate_command == "show":
@@ -302,7 +308,7 @@ def _status(store: DurableStore, *, full: bool = False, selected_task: str | Non
     project = store.project()
     tasks = [_task_summary(store, item["task_id"]) for item in store.tasks()]
     selected = selected_task or project.get("default_task_id")
-    result: dict[str, Any] = {"project": project, "tasks": tasks, "integrity": store.integrity(selected)}
+    result: dict[str, Any] = {"project": project, "tasks": tasks, "integrity": store.integrity(selected_task)}
     if selected:
         result["selected_task"] = _task_detail(store, selected) if full else _task_summary(store, selected)
     return result
@@ -313,6 +319,7 @@ def _task_summary(store: DurableStore, task_id: str) -> dict[str, Any]:
     unresolved = [dep for dep in task["depends_on"] if store.task(dep)["lifecycle_status"] != "completed"]
     acceptance = store.acceptance_status(task_id)
     recovery = store.recovery(task_id)
+    activity = store.protocol_activity(task_id)
     return {
         **task,
         "active_evaluation_head_id": task.get("acceptance_head_id"),
@@ -328,6 +335,11 @@ def _task_summary(store: DurableStore, task_id: str) -> dict[str, Any]:
         "assurance": acceptance["assurance"],
         "recovery_status": recovery["status"],
         "workspace_alignment": recovery["workspace_alignment"],
+        "active_chain": recovery["active_chain"],
+        "review_handoff": recovery["review_handoff"],
+        "external_ref": recovery["external_ref"],
+        "protocol_activity": activity,
+        "routing_warning": activity["routing_warning"],
     }
 
 
@@ -352,6 +364,7 @@ def _brief(status: dict[str, Any]) -> dict[str, Any]:
         "recovery_status": recovery.get("status") or selected.get("recovery_status"),
         "workspace_alignment": recovery.get("workspace_alignment") or selected.get("workspace_alignment"),
         "integrity": status["integrity"]["passed"],
+        "integrity_status": status["integrity"]["status"],
         "control_status": selected.get("control_status"),
         "pending_authorities": selected.get("pending_authorities", []),
         "authority_sequence": selected.get("authority_sequence", []),
@@ -360,16 +373,11 @@ def _brief(status: dict[str, Any]) -> dict[str, Any]:
         "blocker": selected.get("blocker"),
         "resolved_trigger_proofs": selected.get("resolved_trigger_proofs", {}),
         "assurance": selected.get("assurance"),
-    }
-
-
-def _host_context_from_environment() -> dict[str, str] | None:
-    context_id = os.environ.get("METALOOP_HOST_CONTEXT_ID")
-    if not context_id:
-        return None
-    return {
-        "context_id": context_id,
-        "provider": os.environ.get("METALOOP_HOST_CONTEXT_PROVIDER") or "host-environment",
+        "active_chain": selected.get("active_chain", []),
+        "review_handoff": selected.get("review_handoff"),
+        "external_ref": selected.get("external_ref"),
+        "protocol_activity": selected.get("protocol_activity", {}),
+        "routing_warning": selected.get("routing_warning"),
     }
 
 
@@ -395,6 +403,28 @@ def _apply_scope_arguments(payload: dict[str, Any], args: argparse.Namespace) ->
             assurance["rationale"] = args.assurance_rationale
 
 
+def _routine_contract(title: str, checks: list[str]) -> dict[str, Any]:
+    validators = [
+        {"type": "command", "mode": "executable", "severity": "blocking", "command": command.strip()}
+        for command in checks
+    ]
+    return {
+        "goal": title.strip(),
+        "rationale": ["Durable recovery is needed; technical correctness remains with project-native checks."],
+        "constraints": [],
+        "non_goals": [],
+        "acceptance_criteria": ["Declared project-native checks pass."] if validators else ["The Agent records completion of the durable goal."],
+        "verification_spec": {"validators": validators, "resource_gates": []},
+        "protocol_shape": "single_node",
+        "assurance": {"tier": "durable_routine", "trigger_ids": [], "rationale": []},
+        "execution_scope": {
+            "paths": [],
+            "stable_inputs": [],
+            "managed_outputs": [],
+        },
+    }
+
+
 def _assurance_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--assurance-tier", choices=sorted(ASSURANCE_TIERS))
     parser.add_argument("--trigger-id", action="append", default=[])
@@ -416,7 +446,7 @@ def _pair(value: str, key: str) -> dict[str, str]:
 
 
 def _checkpoint_payload(args: argparse.Namespace) -> dict[str, Any]:
-    return {
+    payload = {
         "completed": args.completed,
         "observations": args.observation,
         "diagnosis": args.diagnosis,
@@ -427,6 +457,12 @@ def _checkpoint_payload(args: argparse.Namespace) -> dict[str, Any]:
         "assigned_paths": [_pair(item, "task_id") for item in args.assigned_path],
         "evidence_refs": args.evidence_ref,
     }
+    if args.external_ref is not None or args.external_checkpoint_identity is not None:
+        payload["external_ref"] = {
+            "locator": args.external_ref,
+            "checkpoint_identity": args.external_checkpoint_identity,
+        }
+    return payload
 
 
 def _read_object(path: str | None) -> dict[str, Any]:
